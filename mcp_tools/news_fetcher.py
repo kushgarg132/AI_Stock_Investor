@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime
-from backend.models import NewsArticle, Sentiment
+from backend.models import NewsArticle
 import random
 
 router = APIRouter()
@@ -17,37 +17,46 @@ class NewsFetchResponse(BaseModel):
 @router.post("/news/fetch", response_model=NewsFetchResponse)
 async def fetch_news(request: NewsFetchRequest):
     """
-    Fetches news articles for the given symbols.
-    Currently mocks data for demonstration purposes.
+    Fetches news articles for the given symbols using yfinance.
     """
     articles = []
     
-    # Mock data generation
-    # In a real implementation, this would call NewsAPI, AlphaVantage, etc.
-    titles = [
-        "Quarterly Earnings Beat Expectations",
-        "CEO Announces New Product Line",
-        "Market volatility increases amidst global tensions",
-        "Analyst upgrades rating to Buy",
-        "Supply chain issues persist for tech sector"
-    ]
-    
-    sources = ["Bloomberg", "Reuters", "CNBC", "Financial Times"]
+    import yfinance as yf
     
     for symbol in request.symbols:
-        for _ in range(request.limit // len(request.symbols) + 1):
-            if len(articles) >= request.limit:
-                break
+        try:
+            ticker = yf.Ticker(symbol)
+            news = ticker.news
+            
+            # yfinance news format:
+            # {
+            #   'uuid': '...',
+            #   'title': '...',
+            #   'publisher': '...',
+            #   'link': '...',
+            #   'providerPublishTime': 163...
+            #   'type': 'STORY'
+            # }
+            
+            for item in news:
+                if len(articles) >= request.limit:
+                    break
                 
-            title = f"{symbol}: {random.choice(titles)}"
-            articles.append(NewsArticle(
-                title=title,
-                url=f"https://example.com/news/{random.randint(1000,9999)}",
-                source=random.choice(sources),
-                published_at=datetime.now(),
-                content=f"Sample content for {title}...",
-                sentiment=None, # To be filled by sentiment analysis tool
-                related_symbols=[symbol]
-            ))
+                # Convert timestamp
+                pub_time = datetime.fromtimestamp(item.get('providerPublishTime', 0))
+                
+                articles.append(NewsArticle(
+                    title=item.get('title', 'No Title'),
+                    url=item.get('link', ''),
+                    source=item.get('publisher', 'Unknown'),
+                    published_at=pub_time,
+                    content=None, # yfinance doesn't provide full content
+                    sentiment=None, 
+                    related_symbols=[symbol]
+                ))
+                
+        except Exception as e:
+            print(f"Error fetching news for {symbol}: {e}")
+            continue
             
     return NewsFetchResponse(articles=articles)

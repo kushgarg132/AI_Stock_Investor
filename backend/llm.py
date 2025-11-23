@@ -1,35 +1,41 @@
-from openai import AsyncOpenAI
+from google import genai
+from google.genai import types
 from configs.settings import settings
 from typing import Optional
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 class LLMService:
-    client: Optional[AsyncOpenAI] = None
+    client: Optional[genai.Client] = None
 
     def __init__(self):
-        if settings.OPENAI_API_KEY:
-            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        if settings.GEMINI_API_KEY:
+            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         else:
-            logger.warning("OPENAI_API_KEY not set. LLM features will be disabled or mocked.")
+            logger.warning("GEMINI_API_KEY not set. LLM features will be disabled or mocked.")
 
     async def get_completion(self, prompt: str, system_prompt: str = "You are a helpful assistant.") -> str:
         if not self.client:
             return "LLM_DISABLED"
         
         try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4-turbo-preview", # Or gpt-3.5-turbo
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0
+            # Run the synchronous generate_content in a thread pool to make it async-compatible
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
+                model="gemini-2.0-flash",
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.0
+                )
             )
-            return response.choices[0].message.content
+            return response.text
         except Exception as e:
             logger.error(f"LLM Error: {e}")
-            raise e
+            # Fallback or re-raise depending on desired behavior. 
+            # For now, we'll return an error string so the app doesn't crash.
+            return f"Error generating response: {str(e)}"
 
 llm_service = LLMService()
