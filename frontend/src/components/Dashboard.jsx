@@ -1,14 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { useLocation } from 'react-router-dom';
 import Layout from './Layout';
 import SearchBar from './SearchBar';
 import AnalysisCard from './AnalysisCard';
-import { AlertCircle, Zap, Brain, ChartLine, Shield } from 'lucide-react';
+import { AlertCircle, Zap, Brain, ChartLine, Shield, Activity } from 'lucide-react';
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.state?.symbol) {
+      handleSearch(location.state.symbol);
+      // Clear state so it doesn't re-run on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
 
   const handleSearch = async (symbol) => {
     setLoading(true);
@@ -16,7 +26,7 @@ const Dashboard = () => {
     setData(null);
 
     try {
-      const response = await axios.post(`http://localhost:8001/api/v1/agents/analyze/${symbol}`);
+      const response = await axios.post(`http://localhost:8000/api/v1/agents/analyze/${symbol}`);
       setData(response.data);
     } catch (err) {
       console.error(err);
@@ -35,15 +45,15 @@ const Dashboard = () => {
             <Zap className="w-4 h-4 text-yellow-400" />
             <span className="text-sm text-slate-300">Powered by Multi-Agent AI Architecture</span>
           </div>
-          
+
           <h2 className="text-5xl md:text-6xl font-bold mb-6">
             <span className="gradient-text">Intelligent Stock</span>
             <br />
             <span className="text-white">Analysis Platform</span>
           </h2>
-          
+
           <p className="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
-            Enter any stock ticker and let our AI agents analyze market sentiment, 
+            Enter any stock ticker and let our AI agents analyze market sentiment,
             technical indicators, and risk factors in real-time.
           </p>
         </div>
@@ -77,33 +87,33 @@ const Dashboard = () => {
                   <Brain className="w-8 h-8 text-purple-400 animate-pulse" />
                 </div>
               </div>
-              
+
               <div className="text-center">
                 <h3 className="text-2xl font-bold text-white mb-2">Analyzing Market Data</h3>
                 <p className="text-slate-400">Multi-agent system processing your request</p>
               </div>
-              
+
               {/* Agent steps */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl">
-                <AgentStep 
+                <AgentStep
                   icon={<Zap className="w-5 h-5" />}
                   label="Fetching Data"
                   color="blue"
                   delay={0}
                 />
-                <AgentStep 
+                <AgentStep
                   icon={<Brain className="w-5 h-5" />}
                   label="Sentiment Analysis"
                   color="cyan"
                   delay={1}
                 />
-                <AgentStep 
+                <AgentStep
                   icon={<ChartLine className="w-5 h-5" />}
                   label="Technical Analysis"
                   color="purple"
                   delay={2}
                 />
-                <AgentStep 
+                <AgentStep
                   icon={<Shield className="w-5 h-5" />}
                   label="Risk Assessment"
                   color="pink"
@@ -124,7 +134,24 @@ const Dashboard = () => {
         {/* Empty state with features */}
         {!loading && !data && !error && (
           <div className="w-full max-w-4xl mt-8 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div
+                onClick={() => window.location.href = '/scanner'}
+                className="group p-6 rounded-2xl bg-gradient-to-br from-blue-600/20 to-purple-600/20 border border-blue-500/30 card-hover cursor-pointer relative overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 to-purple-600/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-4 shadow-lg shadow-blue-500/20">
+                  <Activity className="w-6 h-6 text-white" />
+                </div>
+                <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                  Market Scanner
+                  <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                </h3>
+                <p className="text-sm text-blue-200/80 leading-relaxed">
+                  Find stocks with bullish signals in real-time. Scan Nifty Small & Midcap.
+                </p>
+              </div>
+
               <FeatureCard
                 icon={<Brain className="w-6 h-6" />}
                 title="Sentiment Analysis"
@@ -160,7 +187,7 @@ const AgentStep = ({ icon, label, color, delay }) => {
   };
 
   return (
-    <div 
+    <div
       className={`p-4 rounded-xl glass border ${colorClasses[color]} flex flex-col items-center gap-2 shimmer`}
       style={{ animationDelay: `${delay * 0.3}s` }}
     >
