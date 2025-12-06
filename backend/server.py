@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from configs.settings import settings
+from configs.logging_config import setup_logging
 from backend.database import db
+
+# Setup Logging
+logger = setup_logging()
 from mcp_tools import (
     news_fetcher,
     news_sentiment,
@@ -32,11 +36,15 @@ app.add_middleware(
 # Database Events
 @app.on_event("startup")
 async def startup_db_client():
+    logger.info("Starting up AI Stock Investor API...")
     await db.connect_to_database()
+    logger.info("Database connected.")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    logger.info("Shutting down AI Stock Investor API...")
     await db.close_database_connection()
+    logger.info("Database disconnected.")
 
 # Include Routers
 app.include_router(news_fetcher.router, prefix=settings.API_PREFIX, tags=["News"])

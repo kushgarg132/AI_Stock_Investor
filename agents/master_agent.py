@@ -6,6 +6,9 @@ from .quant_agent import QuantAgent
 from .risk_agent import RiskAgent
 from backend.llm import llm_service
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MasterOutput(BaseModel):
     symbol: str
@@ -25,11 +28,14 @@ class MasterAgent:
         """
         Runs the full analysis pipeline.
         """
+        logger.info(f"Starting Master Analysis for {symbol}...")
+        
         # Run Analyst and Quant in parallel
         analyst_task = asyncio.create_task(self.analyst.analyze(symbol))
         quant_task = asyncio.create_task(self.quant.analyze(symbol))
         
         analyst_out, quant_out = await asyncio.gather(analyst_task, quant_task)
+        logger.info(f"Analysis complete. Sentiment: {analyst_out.sentiment_score:.2f}, Quant Signals: {len(quant_out.signals)}")
         
         # Synthesize
         # Logic: If Quant has a signal, check Analyst sentiment.
@@ -45,9 +51,11 @@ class MasterAgent:
             # Sentiment Check
             if signal.signal == SignalType.BUY and analyst_out.sentiment_score < -0.2:
                 reasoning = f"Quant BUY signal rejected due to negative sentiment ({analyst_out.sentiment_score:.2f})"
+                logger.info(reasoning)
                 continue
             if signal.signal == SignalType.SELL and analyst_out.sentiment_score > 0.2:
                 reasoning = f"Quant SELL signal rejected due to positive sentiment ({analyst_out.sentiment_score:.2f})"
+                logger.info(reasoning)
                 continue
                 
             # If we get here, sentiment is supportive or neutral
@@ -58,21 +66,23 @@ class MasterAgent:
                 best_signal = risk_out.adjusted_signal
                 decision = best_signal.signal
                 reasoning = f"Trade Approved. {best_signal.reasoning}. Sentiment: {analyst_out.sentiment_score:.2f}"
+                logger.info(f"Risk Approved: {reasoning}")
                 break
             else:
                 reasoning = f"Trade Rejected by Risk: {risk_out.reason}"
+                logger.warning(reasoning)
         
         # LLM Final Review (Optional, adds flavor)
         if best_signal:
             final_prompt = f"""
-            Review this trade decision:
-            Symbol: {symbol}
-            Signal: {best_signal.signal}
-            Reasoning: {reasoning}
-            Analyst Summary: {analyst_out.summary}
-            
-            Provide a final 1-sentence confirmation or warning.
-            """
+Review this trade decision:
+Symbol: {symbol}
+Signal: {best_signal.signal}
+Reasoning: {reasoning}
+Analyst Summary: {analyst_out.summary}
+
+Provide a final 1-sentence confirmation or warning.
+"""
             llm_comment = await llm_service.get_completion(final_prompt)
             reasoning += f" | LLM Comment: {llm_comment}"
 

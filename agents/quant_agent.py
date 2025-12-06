@@ -5,6 +5,9 @@ from pydantic import BaseModel
 from backend.models import TradeSignal, SignalType, PriceCandle, Trend
 from core.strategies import TechnicalBreakout, MeanReversion, VolumeSurge
 from configs.settings import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 class QuantOutput(BaseModel):
     symbol: str
@@ -23,6 +26,7 @@ class QuantAgent:
         ]
 
     async def analyze(self, symbol: str) -> QuantOutput:
+        logger.info(f"QuantAgent: Starting analysis for {symbol}")
         async with httpx.AsyncClient(timeout=30.0) as client:
             # 1. Fetch Price History
             try:
@@ -34,7 +38,7 @@ class QuantAgent:
                 data = price_response.json()
                 candles = [PriceCandle(**c) for c in data["candles"]]
             except Exception as e:
-                print(f"QuantAgent Error fetching prices: {e}")
+                logger.error(f"QuantAgent Error fetching prices: {e}")
                 return self._empty_output(symbol)
 
             if not candles:
@@ -58,6 +62,7 @@ class QuantAgent:
                 if signal:
                     signals.append(signal)
             
+            logger.info(f"QuantAgent: Analysis complete for {symbol}. Signals: {len(signals)}")
             return QuantOutput(
                 symbol=symbol,
                 signals=signals,

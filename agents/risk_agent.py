@@ -3,6 +3,9 @@ from typing import Optional
 from pydantic import BaseModel
 from backend.models import TradeSignal
 from configs.settings import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 class RiskOutput(BaseModel):
     approved: bool
@@ -44,5 +47,5 @@ class RiskAgent:
                     return RiskOutput(approved=False, adjusted_signal=None, reason=result["reason"])
                     
             except Exception as e:
-                print(f"RiskAgent Error: {e}")
+                logger.error(f"RiskAgent Error: {e}")
                 return RiskOutput(approved=False, adjusted_signal=None, reason=f"Error checking risk: {e}")
