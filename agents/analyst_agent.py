@@ -1,6 +1,6 @@
 import httpx
 from typing import List, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from backend.models import NewsArticle, FinancialEvent
 from backend.llm import llm_service
 from configs.settings import settings
@@ -9,6 +9,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class AnalystOutput(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     symbol: str
     sentiment_score: float
     impact_score: int
@@ -57,7 +59,7 @@ class AnalystAgent:
                  analyzed_articles = articles # Fallback to raw articles
 
             # 3. Detect Events (from concatenated text or titles)
-            combined_text = "\n".join([f"{a['title']}: {a.get('content', '')[:100]}" for a in analyzed_articles])
+            combined_text = "\n".join([f"{a['title']}: {(a.get('content') or '')[:100]}" for a in analyzed_articles])
             events = []
             try:
                 event_response = await client.post(

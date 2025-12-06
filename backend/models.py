@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -22,6 +22,8 @@ class SignalType(str, Enum):
 # Models
 
 class NewsArticle(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     title: str
     url: str
     source: str
@@ -33,6 +35,8 @@ class NewsArticle(BaseModel):
     related_symbols: List[str] = []
 
 class FinancialEvent(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     event_type: str  # earnings, merger, layoff, etc.
     description: str
     date: datetime
@@ -40,6 +44,8 @@ class FinancialEvent(BaseModel):
     impact_rating: int
 
 class PriceCandle(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     symbol: str
     timestamp: datetime
     open: float
@@ -49,6 +55,8 @@ class PriceCandle(BaseModel):
     volume: float
 
 class TradeSignal(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     symbol: str
     signal: SignalType
     timestamp: datetime
@@ -61,6 +69,8 @@ class TradeSignal(BaseModel):
     source_agent: str # e.g., "MasterAgent"
 
 class BacktestResult(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     strategy_name: str
     symbol: str
     start_date: datetime

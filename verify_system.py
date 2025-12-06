@@ -25,6 +25,8 @@ async def run_agent_test():
         if result.final_signal:
             print(f"Trade Details: {result.final_signal}")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Agent Test Failed: {e}")
 
 async def main():

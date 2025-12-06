@@ -16,8 +16,8 @@ const Dashboard = () => {
     setData(null);
 
     try {
-      // Assuming backend is running on port 8001 as per previous context
-      const response = await axios.post(`http://localhost:8001/api/v1/agents/analyze/${symbol}`);
+      // Assuming backend is running on port 8000
+      const response = await axios.post(`http://localhost:8000/api/v1/agents/analyze/${symbol}`);
       setData(response.data);
     } catch (err) {
       console.error(err);
@@ -35,7 +35,7 @@ const Dashboard = () => {
             AI-Powered Market Intelligence
           </h2>
           <p className="text-slate-400 text-lg max-w-2xl mx-auto">
-            Enter a stock ticker to let our multi-agent system analyze market sentiment, 
+            Enter a stock ticker to let our multi-agent system analyze market sentiment,
             technical indicators, and risk factors in real-time.
           </p>
         </div>

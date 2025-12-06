@@ -1,7 +1,7 @@
 import httpx
 import pandas as pd
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal, SignalType, PriceCandle, Trend
 from core.strategies import TechnicalBreakout, MeanReversion, VolumeSurge
 from configs.settings import settings
@@ -10,6 +10,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class QuantOutput(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     symbol: str
     signals: List[TradeSignal]
     trend: str
@@ -46,15 +48,15 @@ class QuantAgent:
 
             # 2. Get Technical Analysis Features (Parallel calls ideally)
             # Trend
-            trend_res = await client.post(f"{self.base_url}/analysis/trend", json={"candles": [c.model_dump() for c in candles]})
+            trend_res = await client.post(f"{self.base_url}/analysis/trend", json={"candles": [c.model_dump(mode='json') for c in candles]})
             trend_data = trend_res.json()
             
             # S/R
-            sr_res = await client.post(f"{self.base_url}/analysis/support_resistance", json={"candles": [c.model_dump() for c in candles]})
+            sr_res = await client.post(f"{self.base_url}/analysis/support_resistance", json={"candles": [c.model_dump(mode='json') for c in candles]})
             sr_data = sr_res.json()
             
             # 3. Run Strategies
-            df = pd.DataFrame([c.model_dump() for c in candles])
+            df = pd.DataFrame([c.model_dump(mode='json') for c in candles])
             signals = []
             
             for strategy in self.strategies:

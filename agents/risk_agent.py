@@ -1,6 +1,6 @@
 import httpx
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal
 from configs.settings import settings
 import logging
@@ -8,6 +8,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class RiskOutput(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     approved: bool
     adjusted_signal: Optional[TradeSignal]
     reason: str

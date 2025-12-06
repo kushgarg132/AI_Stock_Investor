@@ -1,5 +1,5 @@
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal, SignalType
 from .analyst_agent import AnalystAgent
 from .quant_agent import QuantAgent
@@ -11,6 +11,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class MasterOutput(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     symbol: str
     decision: SignalType
     final_signal: Optional[TradeSignal]
