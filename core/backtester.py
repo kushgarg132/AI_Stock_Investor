@@ -2,9 +2,13 @@ import pandas as pd
 import numpy as np
 from typing import List, Type
 from datetime import datetime
+import logging
+
 from backend.models import BacktestResult, SignalType
 from core.strategies import Strategy
 from core.indicators import Indicators
+
+logger = logging.getLogger(__name__)
 
 class Backtester:
     def __init__(self, initial_capital: float = 100000.0):

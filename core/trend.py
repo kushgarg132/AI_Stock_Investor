@@ -1,6 +1,10 @@
 import pandas as pd
+import logging
+
 from .indicators import Indicators
 from backend.models import Trend
+
+logger = logging.getLogger(__name__)
 
 class TrendDetector:
     @staticmethod

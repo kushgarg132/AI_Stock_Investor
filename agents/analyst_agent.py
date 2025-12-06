@@ -19,7 +19,7 @@ class AnalystOutput(BaseModel):
 
 class AnalystAgent:
     def __init__(self):
-        self.base_url = f"http://localhost:8000{settings.API_PREFIX}"
+        self.base_url = f"http://localhost:{settings.SERVER_PORT}{settings.API_PREFIX}"
         
     async def analyze(self, symbol: str) -> AnalystOutput:
         logger.info(f"AnalystAgent: Starting analysis for {symbol}")

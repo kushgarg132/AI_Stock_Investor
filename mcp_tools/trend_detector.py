@@ -1,10 +1,14 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List
+import logging
+
 import pandas as pd
 from backend.models import PriceCandle, Trend
 from core.trend import TrendDetector
 from core.indicators import Indicators
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -17,7 +21,9 @@ class TrendResponse(BaseModel):
 
 @router.post("/analysis/trend", response_model=TrendResponse)
 async def detect_trend(request: TrendRequest):
+    logger.info(f"Detecting trend for {len(request.candles)} candles")
     if not request.candles:
+        logger.warning("No candles provided for trend detection")
         return TrendResponse(trend=Trend.CHOPPY, details="No data")
         
     df = pd.DataFrame([c.model_dump() for c in request.candles])
@@ -27,4 +33,5 @@ async def detect_trend(request: TrendRequest):
     
     trend = TrendDetector.detect_trend(df)
     
+    logger.info(f"Trend detection complete: {trend.value}")
     return TrendResponse(trend=trend, details=f"Detected {trend.value} trend based on SMA alignment")

@@ -15,8 +15,8 @@ def setup_logging():
     )
     
     # Set third-party loggers to WARNING to reduce noise
-    logging.getLogger("uvicorn").setLevel(logging.INFO)
-    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    logging.getLogger("uvicorn").setLevel(logging.DEBUG)
+    logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     
     return logging.getLogger("AI_Stock_Investor")

@@ -8,6 +8,7 @@ class Sentiment(str, Enum):
     POSITIVE = "positive"
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
+    MIXED = "mixed"
 
 class Trend(str, Enum):
     UP = "up"

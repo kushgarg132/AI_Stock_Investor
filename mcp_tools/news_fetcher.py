@@ -2,8 +2,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime
+import logging
+
 from backend.models import NewsArticle
 import random
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -19,14 +23,17 @@ async def fetch_news(request: NewsFetchRequest):
     """
     Fetches news articles for the given symbols using yfinance.
     """
+    logger.info(f"Fetching news for symbols: {request.symbols}, limit: {request.limit}")
     articles = []
     
     import yfinance as yf
     
     for symbol in request.symbols:
         try:
+            logger.debug(f"Fetching news from yfinance for {symbol}")
             ticker = yf.Ticker(symbol)
             news = ticker.news
+            logger.debug(f"Retrieved {len(news) if news else 0} news items for {symbol}")
             
             # yfinance news format:
             # {
@@ -42,21 +49,41 @@ async def fetch_news(request: NewsFetchRequest):
                 if len(articles) >= request.limit:
                     break
                 
-                # Convert timestamp
-                pub_time = datetime.fromtimestamp(item.get('providerPublishTime', 0))
+                # Handle new yfinance structure (nested in 'content')
+                if 'content' in item and isinstance(item['content'], dict):
+                    content = item['content']
+                    title = content.get('title', 'No Title')
+                    url = content.get('clickThroughUrl', {}).get('url', '')
+                    publisher = content.get('provider', {}).get('displayName', 'Unknown')
+                    pub_date_str = content.get('pubDate')
+                    try:
+                        # Format: 2025-12-06T11:00:17Z
+                        pub_time = datetime.strptime(pub_date_str, "%Y-%m-%dT%H:%M:%SZ")
+                    except Exception:
+                        pub_time = datetime.now()
+                else:
+                    # Fallback to old structure
+                    title = item.get('title', 'No Title')
+                    url = item.get('link', '')
+                    publisher = item.get('publisher', 'Unknown')
+                    try:
+                        pub_time = datetime.fromtimestamp(item.get('providerPublishTime', 0))
+                    except:
+                        pub_time = datetime.now()
                 
                 articles.append(NewsArticle(
-                    title=item.get('title', 'No Title'),
-                    url=item.get('link', ''),
-                    source=item.get('publisher', 'Unknown'),
+                    title=title,
+                    url=url,
+                    source=publisher,
                     published_at=pub_time,
-                    content=None, # yfinance doesn't provide full content
+                    content=None, 
                     sentiment=None, 
                     related_symbols=[symbol]
                 ))
                 
         except Exception as e:
-            print(f"Error fetching news for {symbol}: {e}")
+            logger.error(f"Error fetching news for {symbol}: {e}")
             continue
             
+    logger.info(f"News fetch complete. Returning {len(articles)} articles")
     return NewsFetchResponse(articles=articles)

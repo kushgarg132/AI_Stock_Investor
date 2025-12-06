@@ -1,12 +1,17 @@
 import asyncio
 import sys
 import os
+import logging
 
 # Add current directory to path so we can import modules
 sys.path.append(os.getcwd())
 
+from configs.logging_config import setup_logging
 from agents.master_agent import MasterAgent
 from backend.models import SignalType
+
+# Initialize logging
+logger = setup_logging()
 
 async def run_simulation():
     print("Starting AI Stock Investor Simulation...")

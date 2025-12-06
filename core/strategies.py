@@ -1,10 +1,14 @@
 import pandas as pd
 from typing import List, Optional
 from datetime import datetime
+import logging
+
 from backend.models import TradeSignal, SignalType
 from .indicators import Indicators
 from .support_resistance import SupportResistance
 from .trend import TrendDetector, Trend
+
+logger = logging.getLogger(__name__)
 
 class Strategy:
     def analyze(self, df: pd.DataFrame) -> Optional[TradeSignal]:

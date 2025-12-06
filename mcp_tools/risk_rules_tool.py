@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+import logging
+
 from core.risk import RiskRules
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -24,6 +28,7 @@ async def check_risk(request: RiskCheckRequest):
     """
     Evaluates a proposed trade against risk rules.
     """
+    logger.info(f"Checking risk for {request.symbol}: entry={request.entry_price}, stop={request.stop_loss}, account={request.account_size}")
     # 1. Calculate Position Size
     size = RiskRules.calculate_position_size(
         request.account_size,
@@ -36,6 +41,7 @@ async def check_risk(request: RiskCheckRequest):
     
     # 2. Check Exposure
     if not RiskRules.check_exposure_limit(request.current_exposure, request.max_exposure, position_value):
+        logger.warning(f"Risk check REJECTED for {request.symbol}: Max exposure limit exceeded")
         return RiskCheckResponse(
             approved=False,
             position_size_shares=0,
@@ -45,6 +51,7 @@ async def check_risk(request: RiskCheckRequest):
         
     # 3. Sanity Checks
     if size <= 0:
+        logger.warning(f"Risk check REJECTED for {request.symbol}: Invalid stop loss or calculation error")
         return RiskCheckResponse(
             approved=False,
             position_size_shares=0,
@@ -52,6 +59,7 @@ async def check_risk(request: RiskCheckRequest):
             reason="Invalid stop loss or calculation error"
         )
         
+    logger.info(f"Risk check APPROVED for {request.symbol}: {size:.4f} shares, value=${position_value:.2f}")
     return RiskCheckResponse(
         approved=True,
         position_size_shares=size,

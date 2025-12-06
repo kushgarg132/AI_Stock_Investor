@@ -2,9 +2,13 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
+import logging
+
 import yfinance as yf
 import pandas as pd
 from backend.models import PriceCandle
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -22,10 +26,12 @@ async def fetch_price_history(request: PriceHistoryRequest):
     """
     Fetches historical price data for a given symbol using yfinance.
     """
+    logger.info(f"Fetching price history for {request.symbol}, period: {request.period}, interval: {request.interval}")
     try:
         # Fetch data
         ticker = yf.Ticker(request.symbol)
         df = ticker.history(period=request.period, interval=request.interval)
+        logger.debug(f"Retrieved {len(df)} candles for {request.symbol}")
         
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No data found for symbol {request.symbol}")
@@ -43,9 +49,11 @@ async def fetch_price_history(request: PriceHistoryRequest):
                 volume=row['Volume']
             ))
             
+        logger.info(f"Price history fetch complete for {request.symbol}. Returning {len(candles)} candles")
         return PriceHistoryResponse(symbol=request.symbol, candles=candles)
         
     except Exception as e:
+        logger.error(f"Error fetching price history for {request.symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/price_history/test")

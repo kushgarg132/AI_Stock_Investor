@@ -2,9 +2,13 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
+import logging
+import json
+
 from backend.models import FinancialEvent
 from backend.llm import llm_service
-import json
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -20,6 +24,7 @@ async def classify_events(request: EventClassificationRequest):
     """
     Detects financial events from text.
     """
+    logger.info(f"Classifying events from text ({len(request.text)} chars)")
     prompt = f"""
     Extract financial events from the following text:
     "{request.text}"
@@ -58,8 +63,9 @@ async def classify_events(request: EventClassificationRequest):
                 impact_rating=item.get("impact_rating", 5)
             ))
             
+        logger.info(f"Event classification complete. Found {len(events)} events")
         return EventClassificationResponse(events=events)
         
     except Exception as e:
-        print(f"Error classifying events: {e}")
+        logger.error(f"Error classifying events: {e}")
         return EventClassificationResponse(events=[])
