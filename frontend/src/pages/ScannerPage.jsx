@@ -14,7 +14,7 @@ const ScannerPage = () => {
         setScanning(true);
         setError(null);
         try {
-            const response = await axios.get('http://localhost:8000/api/v1/scanner/bullish');
+            const response = await axios.get('http://localhost:8001/api/v1/scanner/bullish');
             setResults(response.data);
         } catch (err) {
             setError('Failed to scan stocks. Please try again.');
@@ -65,8 +65,8 @@ const ScannerPage = () => {
                         onClick={runScan}
                         disabled={scanning}
                         className={`px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-all shadow-lg ${scanning
-                                ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
-                                : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/25 active:scale-95'
+                            ? 'bg-slate-800 text-slate-500 cursor-not-allowed shadow-none'
+                            : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/25 active:scale-95'
                             }`}
                     >
                         <RefreshCw className={`w-5 h-5 ${scanning ? 'animate-spin' : ''}`} />

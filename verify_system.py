@@ -12,7 +12,7 @@ async def verify_api():
     print("Checking API Health...")
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get("http://localhost:8000/")
+            resp = await client.get("http://localhost:8001/")
             print(f"API Status: {resp.status_code} - {resp.json()}")
         except Exception as e:
             print(f"API Check Failed: {e}")

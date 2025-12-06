@@ -26,7 +26,7 @@ const Dashboard = () => {
     setData(null);
 
     try {
-      const response = await axios.post(`http://localhost:8000/api/v1/agents/analyze/${symbol}`);
+      const response = await axios.post(`http://localhost:8001/api/v1/agents/analyze/${symbol}`);
       setData(response.data);
     } catch (err) {
       console.error(err);

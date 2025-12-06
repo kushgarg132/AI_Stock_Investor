@@ -16,7 +16,7 @@ class RiskOutput(BaseModel):
 
 class RiskAgent:
     def __init__(self):
-        self.base_url = f"http://localhost:8000{settings.API_PREFIX}"
+        self.base_url = f"http://localhost:8001{settings.API_PREFIX}"
         
     async def evaluate(self, signal: TradeSignal, account_size: float, current_exposure: float) -> RiskOutput:
         """

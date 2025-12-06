@@ -53,7 +53,7 @@ const GoalsPage = () => {
 
     const fetchGoals = async () => {
         try {
-            const response = await axios.get('http://localhost:8000/api/v1/goals/parsed');
+            const response = await axios.get('http://localhost:8001/api/v1/goals/parsed');
             if (response.data.goals && response.data.goals.length > 0) {
                 setGoals(response.data.goals);
             }
@@ -166,8 +166,8 @@ ${goals.map((goal, index) => `### ${index + 1}. ${goal.title}
 `;
 
         try {
-            await axios.post('http://localhost:8000/api/v1/goals/save', { content: goalsContent });
-            await axios.post('http://localhost:8000/api/v1/goals/reload');
+            await axios.post('http://localhost:8001/api/v1/goals/save', { content: goalsContent });
+            await axios.post('http://localhost:8001/api/v1/goals/reload');
             setMessage({ type: 'success', text: 'Goals saved to GOALS.md!' });
             setTimeout(() => setMessage(null), 3000);
         } catch (err) {
