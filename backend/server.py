@@ -48,6 +48,10 @@ app.include_router(trend_detector.router, prefix=settings.API_PREFIX, tags=["Tec
 app.include_router(volume_spike_detector.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
 app.include_router(risk_rules_tool.router, prefix=settings.API_PREFIX, tags=["Risk"])
 
+# Agents Router
+from backend.routers import agents
+app.include_router(agents.router, prefix=f"{settings.API_PREFIX}/agents", tags=["Agents"])
+
 @app.get("/")
 async def root():
     return {"message": "AI Stock Investor API is running"}
