@@ -83,3 +83,25 @@ class BacktestResult(BaseModel):
     max_drawdown: float
     sharpe_ratio: float
     trades: List[Dict[str, Any]] # List of individual trade details
+
+
+class CompanyInfo(BaseModel):
+    """Comprehensive stock/company information for UI display"""
+    model_config = ConfigDict(use_enum_values=True)
+
+    symbol: str
+    name: str
+    sector: Optional[str] = None
+    industry: Optional[str] = None
+    market_cap: Optional[float] = None
+    current_price: float
+    previous_close: Optional[float] = None
+    day_change: Optional[float] = None
+    day_change_percent: Optional[float] = None
+    week_52_high: Optional[float] = None
+    week_52_low: Optional[float] = None
+    volume: Optional[float] = None
+    avg_volume: Optional[float] = None
+    pe_ratio: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    beta: Optional[float] = None

@@ -16,6 +16,7 @@ class AnalystOutput(BaseModel):
     impact_score: int
     summary: str
     events: List[FinancialEvent]
+    news_articles: List[Dict[str, Any]] = []  # Raw articles for UI display
 
 class AnalystAgent:
     def __init__(self):
@@ -92,7 +93,8 @@ class AnalystAgent:
                 sentiment_score=avg_sentiment,
                 impact_score=max_impact,
                 summary=summary,
-                events=[FinancialEvent(**e) for e in events]
+                events=[FinancialEvent(**e) for e in events],
+                news_articles=analyzed_articles
             )
 
     def _empty_output(self, symbol: str) -> AnalystOutput:
@@ -101,5 +103,6 @@ class AnalystAgent:
             sentiment_score=0.0,
             impact_score=0,
             summary="No news found or error in analysis.",
-            events=[]
+            events=[],
+            news_articles=[]
         )

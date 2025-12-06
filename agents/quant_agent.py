@@ -1,7 +1,7 @@
 import httpx
 import pandas as pd
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal, SignalType, PriceCandle, Trend
 from core.strategies import TechnicalBreakout, MeanReversion, VolumeSurge
 from configs.settings import settings
@@ -10,11 +10,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 class QuantOutput(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     symbol: str
     signals: List[TradeSignal]
     trend: str
     nearest_support: float
     nearest_resistance: float
+    price_candles: List[Dict[str, Any]] = []  # Raw price data for charting
 
 class QuantAgent:
     def __init__(self):
@@ -63,12 +66,16 @@ class QuantAgent:
                     signals.append(signal)
             
             logger.info(f"QuantAgent: Analysis complete for {symbol}. Signals: {len(signals)}")
+            # Convert candles to dict for JSON serialization
+            candle_data = [c.model_dump(mode='json') for c in candles[-60:]]  # Last 60 days for chart
+            
             return QuantOutput(
                 symbol=symbol,
                 signals=signals,
                 trend=trend_data["trend"],
                 nearest_support=sr_data["nearest_support"],
-                nearest_resistance=sr_data["nearest_resistance"]
+                nearest_resistance=sr_data["nearest_resistance"],
+                price_candles=candle_data
             )
 
     def _empty_output(self, symbol: str) -> QuantOutput:
@@ -77,5 +84,6 @@ class QuantAgent:
             signals=[],
             trend="unknown",
             nearest_support=0.0,
-            nearest_resistance=0.0
+            nearest_resistance=0.0,
+            price_candles=[]
         )
