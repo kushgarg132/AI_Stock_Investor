@@ -23,12 +23,19 @@ async def fetch_news(request: NewsFetchRequest):
     """
     Fetches news articles for the given symbols using yfinance.
     """
-    logger.info(f"Fetching news for symbols: {request.symbols}, limit: {request.limit}")
+    articles = await fetch_news_logic(request.symbols, request.limit)
+    return NewsFetchResponse(articles=articles)
+
+async def fetch_news_logic(symbols: List[str], limit: int = 10) -> List[NewsArticle]:
+    """
+    Core logic to fetch news from yfinance.
+    """
+    logger.info(f"Fetching news for symbols: {symbols}, limit: {limit}")
     articles = []
     
     import yfinance as yf
     
-    for symbol in request.symbols:
+    for symbol in symbols:
         try:
             logger.debug(f"Fetching news from yfinance for {symbol}")
             ticker = yf.Ticker(symbol)
@@ -46,7 +53,7 @@ async def fetch_news(request: NewsFetchRequest):
             # }
             
             for item in news:
-                if len(articles) >= request.limit:
+                if len(articles) >= limit:
                     break
                 
                 # Handle new yfinance structure (nested in 'content')
@@ -86,4 +93,4 @@ async def fetch_news(request: NewsFetchRequest):
             continue
             
     logger.info(f"News fetch complete. Returning {len(articles)} articles")
-    return NewsFetchResponse(articles=articles)
+    return articles

@@ -23,12 +23,14 @@ A comprehensive multi-agent system for autonomous stock analysis and trading. Th
 ## Installation
 
 1.  **Clone the repository**
+
     ```bash
     git clone <repository-url>
     cd AI_Stock_Investor
     ```
 
 2.  **Create and activate a virtual environment**
+
     ```bash
     python -m venv .venv
     # Windows
@@ -46,8 +48,9 @@ A comprehensive multi-agent system for autonomous stock analysis and trading. Th
 
 1.  **Environment Variables**:
     The application uses `pydantic-settings`. You can set these via environment variables or a `.env` file.
-    
+
     Key variables (see `configs/settings.py` for defaults):
+
     - `OPENAI_API_KEY`: Required for Analyst Agent.
     - `MONGODB_URL`: Default `mongodb://localhost:27017`
     - `REDIS_URL`: Default `redis://localhost:6379`
@@ -55,28 +58,36 @@ A comprehensive multi-agent system for autonomous stock analysis and trading. Th
 ## Usage
 
 ### 1. Run the API Server
+
 Start the backend server which exposes the tools and agents.
+
 ```bash
 uvicorn backend.server:app --reload
 ```
+
 The API will be available at `http://localhost:8000`.
 Docs: `http://localhost:8000/api/v1/docs`
 
 ### 2. Run a Backtest
+
 Test the strategies against historical data.
+
 ```bash
 python run_backtest.py
 ```
 
 ### 3. Verify System
+
 Run a quick health check and a test agent flow for a single symbol (e.g., AAPL).
+
 ```bash
 python verify_system.py
 ```
 
 ## Documentation
 
-For a detailed explanation of the project structure, file purposes, and architecture diagram, please refer to [project_overview.md](project_overview.md).
+For a detailed explanation of the project structure and file purposes, please refer to [project_overview.md](project_overview.md).
+For detailed System Architecture and User Flow diagrams, please refer to [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Project Structure
 

@@ -28,20 +28,31 @@ async def check_risk(request: RiskCheckRequest):
     """
     Evaluates a proposed trade against risk rules.
     """
-    logger.info(f"Checking risk for {request.symbol}: entry={request.entry_price}, stop={request.stop_loss}, account={request.account_size}")
+    return check_risk_logic(
+        account_size=request.account_size,
+        risk_per_trade_percent=request.risk_per_trade_percent,
+        entry_price=request.entry_price,
+        stop_loss=request.stop_loss,
+        symbol=request.symbol,
+        current_exposure=request.current_exposure,
+        max_exposure=request.max_exposure
+    )
+
+def check_risk_logic(account_size: float, risk_per_trade_percent: float, entry_price: float, stop_loss: float, symbol: str, current_exposure: float, max_exposure: float = 100000.0) -> RiskCheckResponse:
+    logger.info(f"Checking risk for {symbol}: entry={entry_price}, stop={stop_loss}, account={account_size}")
     # 1. Calculate Position Size
     size = RiskRules.calculate_position_size(
-        request.account_size,
-        request.risk_per_trade_percent,
-        request.entry_price,
-        request.stop_loss
+        account_size,
+        risk_per_trade_percent,
+        entry_price,
+        stop_loss
     )
     
-    position_value = size * request.entry_price
+    position_value = size * entry_price
     
     # 2. Check Exposure
-    if not RiskRules.check_exposure_limit(request.current_exposure, request.max_exposure, position_value):
-        logger.warning(f"Risk check REJECTED for {request.symbol}: Max exposure limit exceeded")
+    if not RiskRules.check_exposure_limit(current_exposure, max_exposure, position_value):
+        logger.warning(f"Risk check REJECTED for {symbol}: Max exposure limit exceeded")
         return RiskCheckResponse(
             approved=False,
             position_size_shares=0,
@@ -51,7 +62,7 @@ async def check_risk(request: RiskCheckRequest):
         
     # 3. Sanity Checks
     if size <= 0:
-        logger.warning(f"Risk check REJECTED for {request.symbol}: Invalid stop loss or calculation error")
+        logger.warning(f"Risk check REJECTED for {symbol}: Invalid stop loss or calculation error")
         return RiskCheckResponse(
             approved=False,
             position_size_shares=0,
@@ -59,7 +70,7 @@ async def check_risk(request: RiskCheckRequest):
             reason="Invalid stop loss or calculation error"
         )
         
-    logger.info(f"Risk check APPROVED for {request.symbol}: {size:.4f} shares, value=${position_value:.2f}")
+    logger.info(f"Risk check APPROVED for {symbol}: {size:.4f} shares, value=${position_value:.2f}")
     return RiskCheckResponse(
         approved=True,
         position_size_shares=size,

@@ -1,19 +1,23 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import Dashboard from './components/Dashboard';
-import GoalsPage from './pages/GoalsPage';
 import ScannerPage from './pages/ScannerPage';
+import GoalsPage from './pages/GoalsPage';
+import Watchlist from './pages/Watchlist';
+import Portfolio from './pages/Portfolio';
+import Settings from './pages/Settings';
 
-function App() {
+const App = () => {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/goals" element={<GoalsPage />} />
-        <Route path="/scanner" element={<ScannerPage />} />
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/" element={<Dashboard />} />
+      <Route path="/scanner" element={<ScannerPage />} />
+      <Route path="/goals" element={<GoalsPage />} />
+      <Route path="/watchlist" element={<Watchlist />} />
+      <Route path="/portfolio" element={<Portfolio />} />
+      <Route path="/settings" element={<Settings />} />
+    </Routes>
   );
-}
+};
 
 export default App;

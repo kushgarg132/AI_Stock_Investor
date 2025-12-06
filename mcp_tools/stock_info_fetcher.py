@@ -24,32 +24,58 @@ async def fetch_stock_info(request: StockInfoRequest):
     """
     Fetches comprehensive stock/company information using yfinance.
     """
-    logger.info(f"Fetching stock info for {request.symbol}")
-    try:
-        ticker = yf.Ticker(request.symbol)
-        info = ticker.info
+    company_info = await fetch_stock_info_logic(request.symbol)
+    return StockInfoResponse(company_info=company_info)
+
+async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
+    """
+    Core logic to fetch stock info from yfinance.
+    """
+    logger.info(f"Fetching stock info for {symbol}")
+    import yfinance as yf
+    
+    # Try multiple suffixes: original, NSE, BSE
+    suffixes = ["", ".NS", ".BO"]
+    last_exception = None
+    
+    for suffix in suffixes:
+        try_symbol = f"{symbol}{suffix}"
+        logger.info(f"Attempting to fetch info for {try_symbol}")
         
-        if not info or 'regularMarketPrice' not in info:
-            # Try to get basic info from history
-            hist = ticker.history(period="5d")
-            if hist.empty:
-                raise HTTPException(status_code=404, detail=f"No data found for symbol {request.symbol}")
+        try:
+            ticker = yf.Ticker(try_symbol)
+            # Need to force a check, .info usually does network call
+            info = ticker.info
             
-            current_price = float(hist['Close'].iloc[-1])
-            previous_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
-            day_change = current_price - previous_close
-            day_change_percent = (day_change / previous_close) * 100 if previous_close else 0
-            
-            company_info = CompanyInfo(
-                symbol=request.symbol.upper(),
-                name=request.symbol.upper(),
-                current_price=current_price,
-                previous_close=previous_close,
-                day_change=day_change,
-                day_change_percent=day_change_percent,
-                volume=float(hist['Volume'].iloc[-1]) if 'Volume' in hist.columns else None
-            )
-        else:
+            # Check if valid data came back
+            # yfinance often returns empty info or {'regularMarketPrice': None} for invalid symbols
+            if not info or ('regularMarketPrice' not in info and 'currentPrice' not in info and len(info) < 5):
+                 # Try history as fallback check
+                hist = ticker.history(period="5d")
+                if hist.empty:
+                    # This attempt failed, continue to next suffix
+                    logger.debug(f"No data for {try_symbol}, trying next...")
+                    continue
+                
+                # If history exists, we have a match
+                current_price = float(hist['Close'].iloc[-1])
+                previous_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
+                day_change = current_price - previous_close
+                day_change_percent = (day_change / previous_close) * 100 if previous_close else 0
+                
+                company_info = CompanyInfo(
+                    symbol=try_symbol.upper(),
+                    name=try_symbol.upper(),
+                    current_price=current_price,
+                    previous_close=previous_close,
+                    day_change=day_change,
+                    day_change_percent=day_change_percent,
+                    volume=float(hist['Volume'].iloc[-1]) if 'Volume' in hist.columns else None,
+                    currency="INR" if suffix in ['.NS', '.BO'] else "USD" # Fallback guess if info is empty
+                )
+                logger.info(f"Stock info fetch complete for {try_symbol} (via history)")
+                return company_info
+
             # Full info available
             current_price = info.get('regularMarketPrice') or info.get('currentPrice', 0)
             previous_close = info.get('previousClose', current_price)
@@ -57,8 +83,8 @@ async def fetch_stock_info(request: StockInfoRequest):
             day_change_percent = (day_change / previous_close) * 100 if previous_close else 0
             
             company_info = CompanyInfo(
-                symbol=request.symbol.upper(),
-                name=info.get('longName') or info.get('shortName', request.symbol.upper()),
+                symbol=try_symbol.upper(),
+                name=info.get('longName') or info.get('shortName', try_symbol.upper()),
                 sector=info.get('sector'),
                 industry=info.get('industry'),
                 market_cap=info.get('marketCap'),
@@ -72,17 +98,26 @@ async def fetch_stock_info(request: StockInfoRequest):
                 avg_volume=info.get('averageVolume'),
                 pe_ratio=info.get('trailingPE') or info.get('forwardPE'),
                 dividend_yield=info.get('dividendYield'),
-                beta=info.get('beta')
+                beta=info.get('beta'),
+                currency=info.get('currency', 'USD'),
+                logo_url=info.get('logo_url') or (
+                    f"https://logo.clearbit.com/{info['website'].replace('https://', '').replace('http://', '').replace('www.', '').strip('/').split('/')[0]}" 
+                    if info.get('website') else 
+                    f"https://logo.clearbit.com/{symbol.lower()}.com" # Last resort fallback
+                )
             )
-        
-        logger.info(f"Stock info fetch complete for {request.symbol}: {company_info.name}")
-        return StockInfoResponse(company_info=company_info)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error fetching stock info for {request.symbol}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            
+            logger.info(f"Stock info fetch complete for {try_symbol}: {company_info.name}")
+            return company_info
+            
+        except Exception as e:
+            logger.debug(f"Error fetching {try_symbol}: {e}")
+            last_exception = e
+            continue
+
+    # If all fail
+    logger.error(f"Failed to fetch stock info for {symbol} after trying suffixes {suffixes}")
+    raise HTTPException(status_code=404, detail=f"No data found for symbol {symbol} (tried suffixes: {suffixes})")
 
 
 @router.get("/stock_info/{symbol}", response_model=StockInfoResponse)

@@ -110,3 +110,48 @@ class VolumeSurge(Strategy):
                 source_agent="QuantAgent"
             )
         return None
+
+class MACDCrossover(Strategy):
+    def analyze(self, df: pd.DataFrame) -> Optional[TradeSignal]:
+        if len(df) < 30:
+            return None
+            
+        if 'macd_line' not in df.columns:
+            df = Indicators.calculate_all(df)
+            
+        current_price = df['close'].iloc[-1]
+        symbol = df['symbol'].iloc[-1] if 'symbol' in df.columns else "UNKNOWN"
+        
+        # MACD Logic
+        curr_hist = df['macd_hist'].iloc[-1]
+        prev_hist = df['macd_hist'].iloc[-2]
+        
+        # Bullish Crossover (Histogram flips from negative to positive)
+        if prev_hist < 0 and curr_hist > 0:
+            return TradeSignal(
+                symbol=symbol,
+                signal=SignalType.BUY,
+                timestamp=datetime.now(),
+                entry_price=current_price,
+                stop_loss=current_price * 0.97,
+                target_price=current_price * 1.06,
+                reasoning=f"MACD Bullish Crossover",
+                agent_confidence=0.75,
+                source_agent="QuantAgent"
+            )
+            
+        # Bearish Crossover (Histogram flips from positive to negative)
+        if prev_hist > 0 and curr_hist < 0:
+            return TradeSignal(
+                symbol=symbol,
+                signal=SignalType.SELL,
+                timestamp=datetime.now(),
+                entry_price=current_price,
+                stop_loss=current_price * 1.03,
+                target_price=current_price * 0.94,
+                reasoning=f"MACD Bearish Crossover",
+                agent_confidence=0.75,
+                source_agent="QuantAgent"
+            )
+            
+        return None

@@ -38,4 +38,15 @@ class LLMService:
             # For now, we'll return an error string so the app doesn't crash.
             return f"Error generating response: {str(e)}"
 
+    def get_llm(self):
+        """Returns a LangChain ChatGoogleGenerativeAI instance"""
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        if not settings.GEMINI_API_KEY:
+            return None
+        return ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            google_api_key=settings.GEMINI_API_KEY,
+            temperature=0.0
+        )
+
 llm_service = LLMService()

@@ -59,21 +59,6 @@ class TradeSignal(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
     symbol: str
-    signal: SignalType
-    timestamp: datetime
-    entry_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    target_price: Optional[float] = None
-    position_size: Optional[float] = None
-    reasoning: str
-    agent_confidence: float  # 0.0 to 1.0
-    source_agent: str # e.g., "MasterAgent"
-
-class BacktestResult(BaseModel):
-    model_config = ConfigDict(use_enum_values=True)
-
-    strategy_name: str
-    symbol: str
     start_date: datetime
     end_date: datetime
     total_trades: int
@@ -105,3 +90,5 @@ class CompanyInfo(BaseModel):
     pe_ratio: Optional[float] = None
     dividend_yield: Optional[float] = None
     beta: Optional[float] = None
+    currency: str = "USD"  # Default to USD
+    logo_url: Optional[str] = None

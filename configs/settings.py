@@ -17,9 +17,9 @@ class Settings(BaseSettings):
 
     # API Keys (Set these in your .env file)
     GEMINI_API_KEY: Optional[str] = None
-    NEWS_API_KEY: Optional[str] = "60c8b36b26414ee8b4e52f61868fe4b1"
-    ALPHA_VANTAGE_API_KEY: Optional[str] = "HY3EJMJIW5AUMKKD"
-    FMP_API_KEY: Optional[str] = "bCsvD4k7rryfJW0Ds9iy2JIlHj9WId0P"
+    NEWS_API_KEY: Optional[str] = None
+    ALPHA_VANTAGE_API_KEY: Optional[str] = None
+    FMP_API_KEY: Optional[str] = None
 
     # System Settings
     LOG_LEVEL: str = "INFO"

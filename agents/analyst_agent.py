@@ -1,4 +1,4 @@
-import httpx
+# import httpx - removed
 from typing import List, Dict, Any
 from pydantic import BaseModel, ConfigDict
 from backend.models import NewsArticle, FinancialEvent
@@ -18,11 +18,17 @@ class AnalystOutput(BaseModel):
     events: List[FinancialEvent]
     news_articles: List[Dict[str, Any]] = []  # Raw articles for UI display
 
+from mcp_tools.news_fetcher import fetch_news_logic
+from mcp_tools.news_sentiment import analyze_sentiment_logic
+from mcp_tools.event_classifier import classify_events_logic
+
 class AnalystAgent:
     def __init__(self):
-        self.base_url = f"http://localhost:{settings.SERVER_PORT}{settings.API_PREFIX}"
+        pass
+        # self.base_url was removed as we use direct tool calls now
         
-    async def analyze(self, symbol: str) -> AnalystOutput:
+    async def analyze(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        symbol = state['symbol']
         logger.info(f"AnalystAgent: Starting analysis for {symbol}")
         """
         Orchestrates the news analysis workflow:
@@ -31,71 +37,64 @@ class AnalystAgent:
         3. Detect Events
         4. Synthesize Summary
         """
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # 1. Fetch News
-            try:
-                news_response = await client.post(
-                    f"{self.base_url}/news/fetch",
-                    json={"symbols": [symbol], "limit": 5}
-                )
-                news_response.raise_for_status()
-                articles = news_response.json()["articles"]
-            except Exception as e:
-                logger.error(f"AnalystAgent Error fetching news: {e}")
-                return self._empty_output(symbol)
+        # 1. Fetch News
+        try:
+            # Use tool logic directly (Pythonic tool usage)
+            articles = await fetch_news_logic(symbols=[symbol], limit=5)
+            # articles is List[NewsArticle]
+        except Exception as e:
+            logger.error(f"AnalystAgent Error fetching news: {e}")
+            return self._empty_output(symbol).model_dump(mode='json')
 
-            if not articles:
-                return self._empty_output(symbol)
+        if not articles:
+            return self._empty_output(symbol).model_dump(mode='json')
 
-            # 2. Analyze Sentiment
-            try:
-                sentiment_response = await client.post(
-                    f"{self.base_url}/news/sentiment",
-                    json={"articles": articles}
-                )
-                sentiment_response.raise_for_status()
-                analyzed_articles = sentiment_response.json()["analyzed_articles"]
-            except Exception as e:
-                 logger.error(f"AnalystAgent Error analyzing sentiment: {e}")
-                 analyzed_articles = articles # Fallback to raw articles
+        # 2. Analyze Sentiment
+        try:
+            # Logic function takes List[NewsArticle] and returns List[NewsArticle]
+            analyzed_articles_objs = await analyze_sentiment_logic(articles, target_symbol=symbol)
+            # Convert to list of dicts for state/UI
+            analyzed_articles = [a.model_dump(mode='json') for a in analyzed_articles_objs]
+        except Exception as e:
+                logger.error(f"AnalystAgent Error analyzing sentiment: {e}")
+                analyzed_articles = [a.model_dump(mode='json') for a in articles] # Fallback to raw articles
 
-            # 3. Detect Events (from concatenated text or titles)
-            combined_text = "\n".join([f"{a['title']}: {(a.get('content') or '')[:100]}" for a in analyzed_articles])
-            events = []
-            try:
-                event_response = await client.post(
-                    f"{self.base_url}/events/classify",
-                    json={"text": combined_text}
-                )
-                event_response.raise_for_status()
-                events = event_response.json()["events"]
-            except Exception as e:
-                logger.error(f"AnalystAgent Error classifying events: {e}")
+        # 3. Detect Events (from concatenated text or titles)
+        combined_text = "\n".join([f"{a['title']}: {(a.get('content') or '')[:100]}" for a in analyzed_articles])
+        events = []
+        try:
+            # Logic function takes text and date, returns List[FinancialEvent]
+            from datetime import datetime
+            events_objs = await classify_events_logic(combined_text, datetime.now())
+            events = [e.model_dump(mode='json') for e in events_objs]
+        except Exception as e:
+            logger.error(f"AnalystAgent Error classifying events: {e}")
 
             # 4. Synthesize Summary using LLM
-            summary_prompt = f"""
-            Synthesize a brief market sentiment summary for {symbol} based on these news articles:
-            {combined_text[:2000]}
-            
-            Events detected: {events}
-            
-            Return a concise paragraph.
-            """
-            summary = await llm_service.get_completion(summary_prompt, system_prompt="You are a financial analyst.")
-            
-            # Calculate aggregate scores
-            avg_sentiment = sum(a.get('sentiment_score', 0) for a in analyzed_articles) / len(analyzed_articles) if analyzed_articles else 0
-            max_impact = max([a.get('impact_score', 0) for a in analyzed_articles] + [0])
-            
-            logger.info(f"AnalystAgent: Analysis complete for {symbol}. Sentiment: {avg_sentiment:.2f}")
-            return AnalystOutput(
-                symbol=symbol,
-                sentiment_score=avg_sentiment,
-                impact_score=max_impact,
-                summary=summary,
-                events=[FinancialEvent(**e) for e in events],
-                news_articles=analyzed_articles
-            )
+        # 4. Synthesize Summary using LLM
+        summary_prompt = f"""
+        Synthesize a brief market sentiment summary for {symbol} based on these news articles:
+        {combined_text[:2000]}
+        
+        Events detected: {events}
+        
+        Return a concise paragraph.
+        """
+        summary = await llm_service.get_completion(summary_prompt, system_prompt="You are a financial analyst.")
+        
+        # Calculate aggregate scores
+        avg_sentiment = sum(a.get('sentiment_score', 0) for a in analyzed_articles) / len(analyzed_articles) if analyzed_articles else 0
+        max_impact = max([a.get('impact_score', 0) for a in analyzed_articles] + [0])
+        
+        logger.info(f"AnalystAgent: Analysis complete for {symbol}. Sentiment: {avg_sentiment:.2f}")
+        return AnalystOutput(
+            symbol=symbol,
+            sentiment_score=avg_sentiment,
+            impact_score=max_impact,
+            summary=summary,
+            events=[FinancialEvent(**e) for e in events],
+            news_articles=analyzed_articles
+        ).model_dump(mode='json')
 
     def _empty_output(self, symbol: str) -> AnalystOutput:
         return AnalystOutput(

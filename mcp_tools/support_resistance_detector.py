@@ -21,12 +21,18 @@ class SRResponse(BaseModel):
 
 @router.post("/analysis/support_resistance", response_model=SRResponse)
 async def detect_support_resistance(request: SRRequest):
-    logger.info(f"Detecting support/resistance levels for {len(request.candles)} candles")
-    if not request.candles:
+    """
+    Detects support/resistance levels.
+    """
+    return detect_support_resistance_logic(request.candles)
+
+def detect_support_resistance_logic(candles: List[PriceCandle]) -> SRResponse:
+    logger.info(f"Detecting support/resistance levels for {len(candles)} candles")
+    if not candles:
         logger.warning("No candles provided for S/R detection")
         return SRResponse(levels=[])
         
-    df = pd.DataFrame([c.model_dump() for c in request.candles])
+    df = pd.DataFrame([c.model_dump() for c in candles])
     levels = SupportResistance.identify_levels(df)
     
     current_price = df['close'].iloc[-1]

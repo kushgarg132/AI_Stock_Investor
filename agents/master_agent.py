@@ -1,4 +1,4 @@
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, TypedDict, Annotated
 from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal, SignalType, NewsArticle, FinancialEvent, PriceCandle, CompanyInfo
 from .analyst_agent import AnalystAgent
@@ -6,12 +6,18 @@ from .quant_agent import QuantAgent
 from .risk_agent import RiskAgent
 from backend.llm import llm_service
 from configs.settings import settings
-import httpx
+# import httpx - removed
 import asyncio
 import logging
+import operator
+from langgraph.graph import StateGraph, END
+from langchain_core.messages import BaseMessage, HumanMessage
+
+from backend.agents.search_tool import resolve_company_query
 
 logger = logging.getLogger(__name__)
 
+# --- Data Models (Keep as is for API compatibility) ---
 class TechnicalAnalysis(BaseModel):
     """Technical analysis data from QuantAgent"""
     model_config = ConfigDict(use_enum_values=True)
@@ -40,128 +46,182 @@ class MasterOutput(BaseModel):
     all_signals: List[Dict[str, Any]] = []
     price_data: List[Dict[str, Any]] = []
     agent_confidence: float = 0.0
+    logs: List[str] = []
+    peers: List[str] = []
 
+
+class AgentState(TypedDict):
+    symbol: str
+    account_size: float
+    current_exposure: float
+    
+    # Outputs
+    analyst_output: Optional[Dict[str, Any]]
+    quant_output: Optional[Dict[str, Any]]
+    risk_output: Optional[Dict[str, Any]]
+    company_info: Optional[Dict[str, Any]]
+    peers: List[str]
+    
+    # Final Decision Data
+    decision: SignalType
+    reasoning: str
+    final_signal: Optional[Dict[str, Any]]
+    
+    messages: Annotated[List[BaseMessage], operator.add]
+
+# --- Master Agent ---
 class MasterAgent:
     def __init__(self):
         self.analyst = AnalystAgent()
         self.quant = QuantAgent()
         self.risk = RiskAgent()
-        self.base_url = f"http://localhost:{settings.SERVER_PORT}{settings.API_PREFIX}"
+        
+        # Build Graph
+        workflow = StateGraph(AgentState)
+        
+        # Add Nodes
+        workflow.add_node("resolve_query", self.resolve_node)
+        workflow.add_node("start_analysis", self.start_node)
+        workflow.add_node("analyst", self.analyst_node)
+        workflow.add_node("quant", self.quant_node)
+        workflow.add_node("company_info", self.company_info_node)
+        workflow.add_node("risk_assessment", self.risk_node)
+        workflow.add_node("decision_maker", self.decision_node)
+        
+        # Define Edges (Sequential Flow to ensure all data is ready)
+        workflow.set_entry_point("resolve_query")
+        
+        workflow.add_edge("resolve_query", "start_analysis")
+        workflow.add_edge("start_analysis", "company_info")
+        workflow.add_edge("company_info", "analyst")
+        workflow.add_edge("analyst", "quant")
+        workflow.add_edge("quant", "risk_assessment")
+        workflow.add_edge("risk_assessment", "decision_maker")
+        workflow.add_edge("decision_maker", END)
+        
+        self.graph = workflow.compile()
 
-    async def _fetch_company_info(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Fetch company information from the stock_info endpoint"""
+    # --- Nodes ---
+    async def resolve_node(self, state: AgentState):
+        query = state['symbol']
+        logger.info(f"Resolving query: {query}")
+        resolved_data = await resolve_company_query(query)
+        
+        logger.info(f"Resolved to: {resolved_data}")
+        
+        return {
+            "symbol": resolved_data['symbol'], 
+            "peers": resolved_data.get('peers', []),
+            "messages": [HumanMessage(content=f"Resolved '{query}' to {resolved_data['symbol']}")]
+        }
+
+    async def start_node(self, state: AgentState):
+        logger.info(f"Starting analysis for {state['symbol']}")
+        return {"messages": [HumanMessage(content=f"Analysis started for {state['symbol']}")]}
+
+    async def analyst_node(self, state: AgentState):
+        result = await self.analyst.analyze(state) # Modified to accept state
+        return {"analyst_output": result, "messages": [HumanMessage(content="Analyst finished")]}
+
+    async def quant_node(self, state: AgentState):
+        result = await self.quant.analyze(state) # Modified to accept state
+        candle_count = len(result.get('price_candles', []))
+        return {"quant_output": result, "messages": [HumanMessage(content=f"Quant finished. Processed {candle_count} price candles.")]}
+
+    async def company_info_node(self, state: AgentState):
+        logger.info("Fetching company info...")
+        # Keeping internal logic here or could move to an agent
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.post(
-                    f"{self.base_url}/stock_info",
-                    json={"symbol": symbol}
-                )
-                response.raise_for_status()
-                return response.json().get("company_info")
+            from mcp_tools.stock_info_fetcher import fetch_stock_info_logic
+            info_obj = await fetch_stock_info_logic(state['symbol'])
+            # info_obj is CompanyInfo model
+            return {"company_info": info_obj.model_dump(mode='json')}
         except Exception as e:
-            logger.warning(f"Failed to fetch company info for {symbol}: {e}")
-            return None
+            logger.warning(f"Failed to fetch company info: {e}")
+            return {"company_info": None}
+
+    async def risk_node(self, state: AgentState):
+        # Risk Agent now orchestrates Sentiment Check + Risk Check
+        result = await self.risk.evaluate(state)
+        return {"risk_output": result}
+
+    async def decision_node(self, state: AgentState):
+        # Final packaging
+        risk_out = state.get("risk_output")
+        analyst_out = state.get("analyst_output")
+        quant_out = state.get("quant_output")
+        company = state.get("company_info")
+        
+        if not risk_out or not analyst_out or not quant_out:
+             # Should not happen if graph flows correctly
+             return {"decision": SignalType.HOLD, "reasoning": "Incomplete analysis"}
+        
+        # LLM Flavor text
+        reasoning = risk_out.get('reason', "No decision made")
+        decision = risk_out.get('approved') and risk_out.get('adjusted_signal', {}).get('signal') or SignalType.HOLD
+        
+        if decision != SignalType.HOLD:
+             final_prompt = f"Review trade: {state['symbol']} {decision}. Reason: {reasoning}. Analyst: {analyst_out.get('summary')}. One sentence comment."
+             llm_comment = await llm_service.get_completion(final_prompt)
+             reasoning += f" | LLM: {llm_comment}"
+
+        tech_data = TechnicalAnalysis(
+            trend=quant_out['trend'],
+            nearest_support=quant_out['nearest_support'],
+            nearest_resistance=quant_out['nearest_resistance']
+        )
+        
+        # Construct output dicts
+        return {
+            "decision": decision,
+            "reasoning": reasoning,
+            "final_signal": risk_out.get('adjusted_signal'),
+            "messages": [HumanMessage(content="Decision Made")]
+        }
 
     async def run(self, symbol: str, account_size: float = 100000.0, current_exposure: float = 0.0) -> MasterOutput:
-        """
-        Runs the full analysis pipeline.
-        """
-        logger.info(f"Starting Master Analysis for {symbol}...")
+        inputs = {
+            "symbol": symbol,
+            "account_size": account_size,
+            "current_exposure": current_exposure,
+            "analyst_output": None,
+            "quant_output": None,
+            "risk_output": None,
+            "company_info": None,
+            "peers": [],
+            "decision": SignalType.HOLD,
+            "reasoning": "",
+            "messages": [HumanMessage(content=f"Input: {symbol}")]
+        }
         
-        # Run Analyst, Quant, and Company Info in parallel
-        analyst_task = asyncio.create_task(self.analyst.analyze(symbol))
-        quant_task = asyncio.create_task(self.quant.analyze(symbol))
-        company_info_task = asyncio.create_task(self._fetch_company_info(symbol))
+        # Run graph
+        result = await self.graph.ainvoke(inputs)
         
-        analyst_out, quant_out, company_info = await asyncio.gather(
-            analyst_task, quant_task, company_info_task
-        )
-        logger.info(f"Analysis complete. Sentiment: {analyst_out.sentiment_score:.2f}, Quant Signals: {len(quant_out.signals)}")
+        # Parse result back to MasterOutput
+        quant_out = result['quant_output']
+        analyst_out = result['analyst_output']
         
-        # Synthesize
-        # Logic: If Quant has a signal, check Analyst sentiment.
-        # If Sentiment is contradictory (e.g. Buy signal but terrible news), hold or reduce size.
-        # If confirmed, check Risk.
-        
-        best_signal = None
-        decision = SignalType.HOLD
-        reasoning = "No actionable signals generated. Market conditions are neutral."
-        agent_confidence = 0.5  # Default neutral confidence
-        
-        # Simple logic: Take the first valid signal that aligns with sentiment
-        for signal in quant_out.signals:
-            # Sentiment Check
-            if signal.signal == SignalType.BUY and analyst_out.sentiment_score < -0.2:
-                reasoning = f"Quant BUY signal rejected due to negative sentiment ({analyst_out.sentiment_score:.2f})"
-                logger.info(reasoning)
-                continue
-            if signal.signal == SignalType.SELL and analyst_out.sentiment_score > 0.2:
-                reasoning = f"Quant SELL signal rejected due to positive sentiment ({analyst_out.sentiment_score:.2f})"
-                logger.info(reasoning)
-                continue
-                
-            # If we get here, sentiment is supportive or neutral
-            # Risk Check
-            risk_out = await self.risk.evaluate(signal, account_size, current_exposure)
-            
-            if risk_out.approved:
-                best_signal = risk_out.adjusted_signal
-                decision = best_signal.signal
-                reasoning = f"Trade Approved. {best_signal.reasoning}. Sentiment: {analyst_out.sentiment_score:.2f}"
-                agent_confidence = best_signal.agent_confidence
-                logger.info(f"Risk Approved: {reasoning}")
-                break
-            else:
-                reasoning = f"Trade Rejected by Risk: {risk_out.reason}"
-                logger.warning(reasoning)
-        
-        # LLM Final Review (Optional, adds flavor)
-        if best_signal:
-            final_prompt = f"""
-Review this trade decision:
-Symbol: {symbol}
-Signal: {best_signal.signal}
-Reasoning: {reasoning}
-Analyst Summary: {analyst_out.summary}
-
-Provide a final 1-sentence confirmation or warning.
-"""
-            llm_comment = await llm_service.get_completion(final_prompt)
-            reasoning += f" | LLM Comment: {llm_comment}"
-
-        # Build technical analysis object
-        technical_analysis = TechnicalAnalysis(
-            trend=quant_out.trend,
-            nearest_support=quant_out.nearest_support,
-            nearest_resistance=quant_out.nearest_resistance
-        )
-        
-        # Convert signals to dict for JSON serialization
-        all_signals_dict = []
-        for sig in quant_out.signals:
-            all_signals_dict.append(sig.model_dump(mode='json'))
-        
-        # Convert events to dict
-        events_dict = []
-        for evt in analyst_out.events:
-            events_dict.append(evt.model_dump(mode='json'))
-
         return MasterOutput(
-            symbol=symbol,
-            decision=decision,
-            final_signal=best_signal,
-            reasoning=reasoning,
-            analyst_summary=analyst_out.summary,
-            quant_signals_count=len(quant_out.signals),
-            # Enhanced UI data
-            company_info=company_info,
-            sentiment_score=analyst_out.sentiment_score,
-            impact_score=analyst_out.impact_score,
-            news_articles=analyst_out.news_articles,
-            events=events_dict,
-            technical_analysis=technical_analysis,
-            all_signals=all_signals_dict,
-            price_data=quant_out.price_candles,
-            agent_confidence=agent_confidence
+            symbol=result['symbol'], # Use resolved symbol
+            decision=result['decision'] or SignalType.HOLD,
+            final_signal=result['final_signal'],
+            reasoning=result['reasoning'],
+            analyst_summary=analyst_out['summary'],
+            quant_signals_count=len(quant_out['signals']),
+            company_info=result.get('company_info'),
+            sentiment_score=analyst_out['sentiment_score'],
+            impact_score=analyst_out['impact_score'],
+            news_articles=analyst_out['news_articles'],
+            events=analyst_out['events'],
+            technical_analysis=TechnicalAnalysis(
+                trend=quant_out['trend'],
+                nearest_support=quant_out['nearest_support'],
+                nearest_resistance=quant_out['nearest_resistance']
+            ),
+            all_signals=quant_out['signals'],
+            price_data=quant_out['price_candles'],
+            agent_confidence=0.8,
+            logs=[m.content for m in result['messages']],
+            peers=result.get('peers', [])
         )
 

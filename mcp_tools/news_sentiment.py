@@ -23,30 +23,55 @@ async def analyze_sentiment(request: SentimentAnalysisRequest):
     Analyzes the sentiment of the provided news articles using an LLM.
     Updates the sentiment, sentiment_score, and impact_score fields.
     """
-    logger.info(f"Analyzing sentiment for {len(request.articles)} articles")
+    analyzed = await analyze_sentiment_logic(request.articles)
+    return SentimentAnalysisResponse(analyzed_articles=analyzed)
+
+async def analyze_sentiment_logic(articles: List[NewsArticle], target_symbol: str = None) -> List[NewsArticle]:
+    logger.info(f"Analyzing sentiment for {len(articles)} articles (Target: {target_symbol})")
     analyzed = []
     
-    for article in request.articles:
+    for article in articles:
         logger.debug(f"Processing article: {article.title[:50] if article.title else 'No Title'}...")
+        
         # Construct prompt - handle None content
-        content_preview = (article.content or "")[:200]
+        content_preview = (article.content or "")[:500] # Increased context
+        
         prompt = f"""
-        Analyze the following financial news headline and content:
-        Title: {article.title}
-        Content: {content_preview}...
+        You are a senior financial analyst. Analyze the following news for the stock symbol: {target_symbol if target_symbol else "GENERAL MARKET"}.
         
-        Determine:
-        1. Sentiment (POSITIVE, NEGATIVE, NEUTRAL)
-        2. Sentiment Score (-1.0 to 1.0)
-        3. Impact Score (1-10, where 10 is market moving)
+        News Headline: {article.title}
+        News Content: {content_preview}
         
-        Return JSON only: {{ "sentiment": "...", "score": 0.0, "impact": 0 }}
+        Step 1: Relevance Check
+        - Is this article directly relevant to {target_symbol if target_symbol else "finance"}? 
+        - If it mentions {target_symbol} only in passing (e.g., as part of a list of top gainers) with no specific news, relevance is LOW.
+        - If it discusses earnings, products, management, or sector trends affecting {target_symbol}, relevance is HIGH.
+        
+        Step 2: Sentiment Analysis
+        - Determine the sentiment (POSITIVE, NEGATIVE, NEUTRAL).
+        - Assign a score (-1.0 to 1.0).
+        - Assign an impact score (1-10). 10 = massive market mover (e.g. merger, earnings beat). 1 = noise.
+        
+        Step 3: Reasoning
+        - Explain in one sentence WHY you assigned this score.
+        
+        Return strict JSON format:
+        {{
+            "is_relevant": true,
+            "relevance_reason": "...",
+            "sentiment": "POSITIVE",
+            "score": 0.5,
+            "impact": 5,
+            "reasoning": "..."
+        }}
+        
+        If NOT relevant, return: {{ "is_relevant": false, "relevance_reason": "Not about target stock" }}
         """
         
         try:
             response = await llm_service.get_completion(
                 prompt, 
-                system_prompt="You are a financial sentiment analyst. Return strict JSON."
+                system_prompt="You are a simplified financial reasoning engine. Return strict JSON only."
             )
             
             if response == "LLM_DISABLED":
@@ -55,29 +80,39 @@ async def analyze_sentiment(request: SentimentAnalysisRequest):
                 article.sentiment_score = 0.0
                 article.impact_score = 1
             else:
-                # Clean response (remove markdown code blocks if present)
+                # Clean response
                 if "```json" in response:
                     response = response.split("```json")[1].split("```")[0]
                 elif "```" in response:
                     response = response.split("```")[1].split("```")[0]
                     
                 data = json.loads(response.strip())
-                # Handle potentially invalid sentiment values from LLM
-                try:
-                    article.sentiment = Sentiment(data["sentiment"].lower())
-                except ValueError:
-                    logger.warning(f"Unknown sentiment value '{data['sentiment']}', defaulting to NEUTRAL")
+                
+                # Check relevance first
+                if not data.get("is_relevant", True) and target_symbol:
+                    logger.info(f"Article skipped due to low relevance: {article.title[:30]}...")
                     article.sentiment = Sentiment.NEUTRAL
-                article.sentiment_score = float(data["score"])
-                article.impact_score = int(data["impact"])
+                    article.sentiment_score = 0.0
+                    article.impact_score = 0
+                    # We could strictly remove it, but keeping it as NEUTRAL/0 impact is safer for now
+                else:
+                    try:
+                        article.sentiment = Sentiment(data.get("sentiment", "neutral").lower())
+                    except ValueError:
+                        article.sentiment = Sentiment.NEUTRAL
+                    
+                    article.sentiment_score = float(data.get("score", 0.0))
+                    article.impact_score = int(data.get("impact", 0))
+                    # Store reasoning? Models don't have reasoning field yet.
+                    # We could append it to content or summary later. For now, it just improves the score quality.
+                    
                 logger.debug(f"Sentiment result: {article.sentiment}, score: {article.sentiment_score}")
                 
         except Exception as e:
-            # Fallback on error
             logger.error(f"Error analyzing sentiment: {e}")
             article.sentiment = Sentiment.NEUTRAL
             
         analyzed.append(article)
         
     logger.info(f"Sentiment analysis complete for {len(analyzed)} articles")
-    return SentimentAnalysisResponse(analyzed_articles=analyzed)
+    return analyzed

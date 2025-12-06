@@ -64,7 +64,10 @@ app.include_router(stock_scanner.router, prefix=settings.API_PREFIX, tags=["Scan
 
 # Agents Router
 from backend.routers import agents
+from backend.routers import chat
+
 app.include_router(agents.router, prefix=f"{settings.API_PREFIX}/agents", tags=["Agents"])
+app.include_router(chat.router, prefix=f"{settings.API_PREFIX}/chat", tags=["Chat"])
 
 @app.get("/")
 async def root():

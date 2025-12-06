@@ -21,12 +21,19 @@ class TrendResponse(BaseModel):
 
 @router.post("/analysis/trend", response_model=TrendResponse)
 async def detect_trend(request: TrendRequest):
-    logger.info(f"Detecting trend for {len(request.candles)} candles")
-    if not request.candles:
+    """
+    Detects trend based on candles.
+    """
+    trend, details = detect_trend_logic(request.candles)
+    return TrendResponse(trend=trend, details=details)
+
+def detect_trend_logic(candles: List[PriceCandle]) -> tuple[Trend, str]:
+    logger.info(f"Detecting trend for {len(candles)} candles")
+    if not candles:
         logger.warning("No candles provided for trend detection")
-        return TrendResponse(trend=Trend.CHOPPY, details="No data")
+        return Trend.CHOPPY, "No data"
         
-    df = pd.DataFrame([c.model_dump() for c in request.candles])
+    df = pd.DataFrame([c.model_dump() for c in candles])
     
     # Calculate indicators if needed (TrendDetector expects them)
     df = Indicators.calculate_all(df)
@@ -34,4 +41,4 @@ async def detect_trend(request: TrendRequest):
     trend = TrendDetector.detect_trend(df)
     
     logger.info(f"Trend detection complete: {trend.value}")
-    return TrendResponse(trend=trend, details=f"Detected {trend.value} trend based on SMA alignment")
+    return trend, f"Detected {trend.value} trend based on SMA alignment"

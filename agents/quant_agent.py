@@ -1,9 +1,9 @@
-import httpx
+# import httpx - removed
 import pandas as pd
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal, SignalType, PriceCandle, Trend
-from core.strategies import TechnicalBreakout, MeanReversion, VolumeSurge
+from core.strategies import TechnicalBreakout, MeanReversion, VolumeSurge, MACDCrossover
 from configs.settings import settings
 import logging
 
@@ -19,64 +19,74 @@ class QuantOutput(BaseModel):
     nearest_resistance: float
     price_candles: List[Dict[str, Any]] = []  # Raw price data for charting
 
+from mcp_tools.price_history_fetcher import fetch_price_history_logic
+
+from mcp_tools.trend_detector import detect_trend_logic
+from mcp_tools.support_resistance_detector import detect_support_resistance_logic
+
 class QuantAgent:
     def __init__(self):
-        self.base_url = f"http://localhost:{settings.SERVER_PORT}{settings.API_PREFIX}"
+        # self.base_url was removed as we use direct tool calls now
         self.strategies = [
             TechnicalBreakout(),
             MeanReversion(),
-            VolumeSurge()
+            VolumeSurge(),
+            MACDCrossover()
         ]
 
-    async def analyze(self, symbol: str) -> QuantOutput:
+    async def analyze(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        symbol = state['symbol']
         logger.info(f"QuantAgent: Starting analysis for {symbol}")
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            # 1. Fetch Price History
-            try:
-                price_response = await client.post(
-                    f"{self.base_url}/price_history",
-                    json={"symbol": symbol, "period": "6mo", "interval": "1d"}
-                )
-                price_response.raise_for_status()
-                data = price_response.json()
-                candles = [PriceCandle(**c) for c in data["candles"]]
-            except Exception as e:
-                logger.error(f"QuantAgent Error fetching prices: {e}")
-                return self._empty_output(symbol)
+        
+        # 1. Fetch Price History
+        try:
+            # Use tool logic directly
+            candles_obj, source = await fetch_price_history_logic(symbol=symbol, period="6mo", interval="1d")
+            # Need to act like we got response.json()
+            # Previous code: candles = [PriceCandle(**c) for c in data["candles"]]
+            # We have list of PriceCandle objects.
+            candles = candles_obj
+        except Exception as e:
+            logger.error(f"QuantAgent Error fetching prices: {e}")
+            return self._empty_output(symbol).model_dump(mode='json')
 
-            if not candles:
-                return self._empty_output(symbol)
+        if not candles:
+            return self._empty_output(symbol).model_dump(mode='json')
 
-            # 2. Get Technical Analysis Features (Parallel calls ideally)
-            # Trend - use mode='json' to serialize datetime properly
-            trend_res = await client.post(f"{self.base_url}/analysis/trend", json={"candles": [c.model_dump(mode='json') for c in candles]})
-            trend_data = trend_res.json()
-            
-            # S/R
-            sr_res = await client.post(f"{self.base_url}/analysis/support_resistance", json={"candles": [c.model_dump(mode='json') for c in candles]})
-            sr_data = sr_res.json()
-            
-            # 3. Run Strategies
-            df = pd.DataFrame([c.model_dump() for c in candles])
-            signals = []
-            
-            for strategy in self.strategies:
-                signal = strategy.analyze(df)
-                if signal:
-                    signals.append(signal)
-            
-            logger.info(f"QuantAgent: Analysis complete for {symbol}. Signals: {len(signals)}")
-            # Convert candles to dict for JSON serialization
-            candle_data = [c.model_dump(mode='json') for c in candles[-60:]]  # Last 60 days for chart
-            
-            return QuantOutput(
-                symbol=symbol,
-                signals=signals,
-                trend=trend_data["trend"],
-                nearest_support=sr_data["nearest_support"],
-                nearest_resistance=sr_data["nearest_resistance"],
-                price_candles=candle_data
-            )
+        # 2. Get Technical Analysis Features (Parallel calls ideally)
+        # Trend
+        trend_val, trend_details = detect_trend_logic(candles)
+        
+        # S/R
+        sr_response = detect_support_resistance_logic(candles)
+        # sr_response is SRResponse object
+        
+        # 3. Run Strategies
+        df = pd.DataFrame([c.model_dump() for c in candles])
+        signals = []
+        
+        for strategy in self.strategies:
+            signal = strategy.analyze(df)
+            if signal:
+                signals.append(signal)
+        
+        logger.info(f"QuantAgent: Analysis complete for {symbol}. Signals: {len(signals)}")
+        
+        # Determine candles to return
+        # candle_data = [c.model_dump(mode='json') for c in candles[-60:]] 
+        # Debugging: returning all candles to verify data flow
+        candle_data = [c.model_dump(mode='json') for c in candles]
+        
+        logger.info(f"QuantAgent: Returning {len(candle_data)} candles for {symbol}")
+        
+        return QuantOutput(
+            symbol=symbol,
+            signals=signals,
+            trend=trend_val.value, # trend_val is Enum
+            nearest_support=sr_response.nearest_support,
+            nearest_resistance=sr_response.nearest_resistance,
+            price_candles=candle_data
+        ).model_dump(mode='json')
 
     def _empty_output(self, symbol: str) -> QuantOutput:
         return QuantOutput(

@@ -50,6 +50,16 @@ class Indicators:
         return upper, lower
 
     @staticmethod
+    def macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
+        """Moving Average Convergence Divergence"""
+        exp1 = series.ewm(span=fast, adjust=False).mean()
+        exp2 = series.ewm(span=slow, adjust=False).mean()
+        macd_line = exp1 - exp2
+        signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+        histogram = macd_line - signal_line
+        return macd_line, signal_line, histogram
+
+    @staticmethod
     def calculate_all(df: pd.DataFrame) -> pd.DataFrame:
         """Applies all core indicators to the dataframe"""
         df = df.copy()
@@ -68,5 +78,10 @@ class Indicators:
         upper, lower = Indicators.bollinger_bands(df['close'])
         df['bb_upper'] = upper
         df['bb_lower'] = lower
+        
+        macd, signal, hist = Indicators.macd(df['close'])
+        df['macd_line'] = macd
+        df['macd_signal'] = signal
+        df['macd_hist'] = hist
         
         return df

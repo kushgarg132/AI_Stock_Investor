@@ -24,10 +24,14 @@ async def classify_events(request: EventClassificationRequest):
     """
     Detects financial events from text.
     """
-    logger.info(f"Classifying events from text ({len(request.text)} chars)")
+    events = await classify_events_logic(request.text, request.date)
+    return EventClassificationResponse(events=events)
+
+async def classify_events_logic(text: str, date: datetime) -> List[FinancialEvent]:
+    logger.info(f"Classifying events from text ({len(text)} chars)")
     prompt = f"""
     Extract financial events from the following text:
-    "{request.text}"
+    "{text}"
     
     Events to look for: Earnings, Mergers, Acquisitions, Layoffs, Guidance Change, FDA Approval, etc.
     
@@ -44,7 +48,7 @@ async def classify_events(request: EventClassificationRequest):
         )
         
         if response == "LLM_DISABLED":
-            return EventClassificationResponse(events=[])
+            return []
             
         # Clean response
         if "```json" in response:
@@ -58,14 +62,14 @@ async def classify_events(request: EventClassificationRequest):
             events.append(FinancialEvent(
                 event_type=item["event_type"],
                 description=item["description"],
-                date=request.date,
+                date=date,
                 symbols=item.get("symbols", []),
                 impact_rating=item.get("impact_rating", 5)
             ))
             
         logger.info(f"Event classification complete. Found {len(events)} events")
-        return EventClassificationResponse(events=events)
+        return events
         
     except Exception as e:
         logger.error(f"Error classifying events: {e}")
-        return EventClassificationResponse(events=[])
+        return []
