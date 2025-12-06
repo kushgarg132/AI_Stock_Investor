@@ -15,7 +15,9 @@ from mcp_tools import (
     trend_detector,
     volume_spike_detector,
     risk_rules_tool,
-    stock_info_fetcher
+    stock_info_fetcher,
+    goals_api,
+    stock_scanner
 )
 
 app = FastAPI(
@@ -57,6 +59,8 @@ app.include_router(trend_detector.router, prefix=settings.API_PREFIX, tags=["Tec
 app.include_router(volume_spike_detector.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
 app.include_router(risk_rules_tool.router, prefix=settings.API_PREFIX, tags=["Risk"])
 app.include_router(stock_info_fetcher.router, prefix=settings.API_PREFIX, tags=["Market Data"])
+app.include_router(goals_api.router, prefix=settings.API_PREFIX, tags=["Goals"])
+app.include_router(stock_scanner.router, prefix=settings.API_PREFIX, tags=["Scanner"])
 
 # Agents Router
 from backend.routers import agents
