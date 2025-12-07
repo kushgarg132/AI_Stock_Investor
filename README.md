@@ -5,7 +5,7 @@ A comprehensive, agentic AI platform for autonomous stock analysis, trading simu
 ## Live Demo
 
 - **Frontend (UI)**: [https://ai-stock-investor.vercel.app/](https://ai-stock-investor.vercel.app/)
-- **Backend (API)**: [https://ai-stock-investor.onrender.com](https://ai-stock-investor.onrender.com)
+- **Backend (API)**: [https://ai-stock-investor.onrender.com/](https://ai-stock-investor.onrender.com/api/v1/docs)
 
 ---
 

@@ -29,9 +29,11 @@ from backend.mcp_tools import (
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
+    description="API for AI Stock Investor Platform",
     version=settings.VERSION,
     openapi_url=f"{settings.API_PREFIX}/openapi.json",
-    docs_url=f"{settings.API_PREFIX}/docs"
+    docs_url=f"{settings.API_PREFIX}/docs",
+    redoc_url=f"{settings.API_PREFIX}/redoc"
 )
 
 # CORS
