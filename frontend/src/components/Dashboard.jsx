@@ -95,11 +95,11 @@ const Dashboard = () => {
                 <header className="text-center py-10">
                     <Badge variant="secondary" className="mb-4">
                         <Zap className="w-3 h-3 mr-1 text-yellow-400" />
-                        v2.0 Beta Live
+                        v2.0 Enterprise Mode
                     </Badge>
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 text-balance">
                         <span className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                            Financial Intelligence
+                            NeoTrade AI
                         </span>
                     </h1>
                     <p className="text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed">
