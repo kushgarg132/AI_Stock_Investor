@@ -33,11 +33,14 @@ RUN wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project
-COPY . .
+# Copy project into a subdirectory to preserve package imports
+COPY . ./backend
+
+# Set PYTHONPATH to include the /app directory
+ENV PYTHONPATH=/app
 
 # Expose port
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.server:app", "--host", "0.0.0.0", "--port", "8000"]
