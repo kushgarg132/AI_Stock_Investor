@@ -24,7 +24,7 @@ class LLMService:
             # Run the synchronous generate_content in a thread pool to make it async-compatible
             response = await asyncio.to_thread(
                 self.client.models.generate_content,
-                model="gemini-2.0-flash",
+                model="gemini-pro-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=system_prompt,
@@ -44,9 +44,10 @@ class LLMService:
         if not settings.GEMINI_API_KEY:
             return None
         return ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
+            model="gemini-pro-latest",
             google_api_key=settings.GEMINI_API_KEY,
-            temperature=0.0
+            temperature=0.0,
+            max_retries=0
         )
 
 llm_service = LLMService()

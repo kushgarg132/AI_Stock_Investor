@@ -5,7 +5,6 @@ import logging
 from backend.agents.chat_agent import chat_agent
 
 router = APIRouter(
-    prefix="/chat",
     tags=["chat"],
     responses={404: {"description": "Not found"}},
 )

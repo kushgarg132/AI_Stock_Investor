@@ -1,5 +1,6 @@
 import React from 'react';
 import Sidebar from './layout/Sidebar';
+import ChatWidget from './ChatWidget';
 import { cn } from '../utils/cn';
 
 const Layout = ({ children }) => {
@@ -16,6 +17,7 @@ const Layout = ({ children }) => {
           {children}
         </div>
       </main>
+      <ChatWidget />
     </div>
   );
 };
