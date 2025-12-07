@@ -2,6 +2,11 @@
 
 A comprehensive multi-agent system for autonomous stock analysis and trading. This project leverages specialized AI agents (Analyst, Quant, Risk) orchestrated by a Master Agent to make informed trading decisions based on fundamental news, technical analysis, and strict risk management rules.
 
+## Live Demo
+
+- **Frontend**: [https://ai-stock-investor.vercel.app/](https://ai-stock-investor.vercel.app/)
+- **Backend API**: [https://ai-stock-investor.onrender.com](https://ai-stock-investor.onrender.com)
+
 ## Features
 
 - **Multi-Agent Architecture**:
