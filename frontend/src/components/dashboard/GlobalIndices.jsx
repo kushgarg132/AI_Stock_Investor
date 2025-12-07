@@ -3,7 +3,7 @@ import { Card, CardContent } from '../common/Card';
 import { ArrowUp, ArrowDown, Globe } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-const GlobalIndices = ({ indices, isLoading }) => {
+const GlobalIndices = ({ indices, isLoading, onIndexClick }) => {
     if (isLoading) {
         return (
             <div className="space-y-4">
@@ -28,7 +28,11 @@ const GlobalIndices = ({ indices, isLoading }) => {
             </h3>
             <div className="grid grid-cols-1 gap-3">
                 {indices.map((idx) => (
-                    <Card key={idx.name} className="hover:border-primary/30 transition-colors">
+                    <Card 
+                        key={idx.name} 
+                        className="hover:border-primary/30 transition-colors cursor-pointer hover:bg-muted/5"
+                        onClick={() => onIndexClick && onIndexClick(idx.symbol)}
+                    >
                         <CardContent className="p-3 flex items-center justify-between">
                             <div>
                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{idx.name}</p>
