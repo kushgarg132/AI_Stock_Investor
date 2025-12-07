@@ -1,5 +1,7 @@
 # AI Stock Investor
 
+![Dashboard Preview](assets/dashboard_preview.png)
+
 A comprehensive, agentic AI platform for autonomous stock analysis, trading simulation, and personalized investment insights. This system leverages a multi-agent architecture (Master, Analyst, Quant, Risk, Chat) to provide deep fundamental and technical analysis combined with strict risk management.
 
 ## Live Demo
