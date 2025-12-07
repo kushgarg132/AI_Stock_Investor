@@ -2,8 +2,8 @@ import asyncio
 import httpx
 import logging
 
-from configs.logging_config import setup_logging
-from agents.master_agent import MasterAgent
+from backend.configs.logging_config import setup_logging
+from backend.agents.master_agent import MasterAgent
 
 # Initialize logging
 logger = setup_logging()

@@ -3,7 +3,7 @@ from typing import List, Dict, Any
 from pydantic import BaseModel, ConfigDict
 from backend.models import NewsArticle, FinancialEvent
 from backend.llm import llm_service
-from configs.settings import settings
+from backend.configs.settings import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,9 +19,9 @@ class AnalystOutput(BaseModel):
     news_articles: List[Dict[str, Any]] = []  # Raw articles for UI display
     sentiment_analysis: Dict[str, Any] = {} # Detailed breakdown
 
-from mcp_tools.news_fetcher import fetch_news_logic
-from mcp_tools.news_sentiment import analyze_sentiment_logic
-from mcp_tools.event_classifier import classify_events_logic
+from backend.mcp_tools.news_fetcher import fetch_news_logic
+from backend.mcp_tools.news_sentiment import analyze_sentiment_logic
+from backend.mcp_tools.event_classifier import classify_events_logic
 
 class AnalystAgent:
     def __init__(self):

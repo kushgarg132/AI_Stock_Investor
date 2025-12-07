@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import logging
 
-from agents.master_agent import MasterAgent, MasterOutput
+from backend.agents.master_agent import MasterAgent, MasterOutput
 
 logger = logging.getLogger(__name__)
 

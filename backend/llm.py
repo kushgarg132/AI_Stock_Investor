@@ -1,6 +1,6 @@
 from google import genai
 from google.genai import types
-from configs.settings import settings
+from backend.configs.settings import settings
 from typing import Optional
 import logging
 import asyncio

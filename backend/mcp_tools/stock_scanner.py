@@ -14,7 +14,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 
-from core.indian_stocks import HIGH_VOLATILITY_PICKS, get_stock_symbol_nse
+from backend.core.indian_stocks import HIGH_VOLATILITY_PICKS, get_stock_symbol_nse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

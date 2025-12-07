@@ -2,11 +2,11 @@
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal
-from configs.settings import settings
+from backend.configs.settings import settings
 import logging
-from mcp_tools.risk_rules_tool import check_risk_logic
+from backend.mcp_tools.risk_rules_tool import check_risk_logic
 import pandas as pd
-from core.indicators import Indicators
+from backend.core.indicators import Indicators
 
 logger = logging.getLogger(__name__)
 

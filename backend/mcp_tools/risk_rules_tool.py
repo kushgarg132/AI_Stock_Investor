@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import logging
 
-from core.risk import RiskRules
+from backend.core.risk import RiskRules
 
 logger = logging.getLogger(__name__)
 

@@ -7,13 +7,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from configs.settings import settings
-from configs.logging_config import setup_logging
+from backend.configs.settings import settings
+from backend.configs.logging_config import setup_logging
 from backend.database import db
 
 # Setup Logging
 logger = setup_logging()
-from mcp_tools import (
+from backend.mcp_tools import (
     news_fetcher,
     news_sentiment,
     event_classifier,

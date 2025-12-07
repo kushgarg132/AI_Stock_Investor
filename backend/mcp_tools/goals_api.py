@@ -7,7 +7,7 @@ Provides access to project goals for the frontend UI.
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Dict, Any
-from core.goals_loader import goals_loader
+from backend.core.goals_loader import goals_loader
 from pathlib import Path
 
 router = APIRouter()

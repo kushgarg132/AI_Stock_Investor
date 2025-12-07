@@ -1,6 +1,6 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from redis import asyncio as aioredis
-from configs.settings import settings
+from backend.configs.settings import settings
 import logging
 
 logger = logging.getLogger(__name__)

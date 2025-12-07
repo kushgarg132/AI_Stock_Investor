@@ -1,8 +1,8 @@
 from langchain_core.tools import tool
 from typing import List
-from mcp_tools.news_fetcher import fetch_news_logic
-from mcp_tools.stock_info_fetcher import fetch_stock_info_logic
-from mcp_tools.price_history_fetcher import fetch_price_history_logic
+from backend.mcp_tools.news_fetcher import fetch_news_logic
+from backend.mcp_tools.stock_info_fetcher import fetch_stock_info_logic
+from backend.mcp_tools.price_history_fetcher import fetch_price_history_logic
 from backend.models import NewsArticle, CompanyInfo, PriceCandle
 
 # --- Wrappers to ensuring typing compatibility if needed ---

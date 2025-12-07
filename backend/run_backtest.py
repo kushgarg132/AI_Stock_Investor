@@ -1,8 +1,8 @@
 import asyncio
 import pandas as pd
-from core.backtester import Backtester
-from core.strategies import TechnicalBreakout
-from mcp_tools.price_history_fetcher import fetch_price_history, PriceHistoryRequest # Direct import for script
+from backend.core.backtester import Backtester
+from backend.core.strategies import TechnicalBreakout
+from backend.mcp_tools.price_history_fetcher import fetch_price_history_logic, PriceHistoryRequest # Direct import for script
 # Note: Direct import of fetcher logic might require refactoring if it depends on request context, 
 # but here we'll just use yfinance directly or mock it for the script to be standalone-ish.
 import yfinance as yf

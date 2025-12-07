@@ -6,8 +6,8 @@ import logging
 # Add current directory to path so we can import modules
 sys.path.append(os.getcwd())
 
-from configs.logging_config import setup_logging
-from agents.master_agent import MasterAgent
+from backend.configs.logging_config import setup_logging
+from backend.agents.master_agent import MasterAgent
 from backend.models import SignalType
 
 # Initialize logging

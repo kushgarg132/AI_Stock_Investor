@@ -1,6 +1,6 @@
 import logging
 import sys
-from configs.settings import settings
+from backend.configs.settings import settings
 
 def setup_logging():
     """

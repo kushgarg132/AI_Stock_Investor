@@ -5,8 +5,8 @@ import logging
 
 import pandas as pd
 from backend.models import PriceCandle, Trend
-from core.trend import TrendDetector
-from core.indicators import Indicators
+from backend.core.trend import TrendDetector
+from backend.core.indicators import Indicators
 
 logger = logging.getLogger(__name__)
 

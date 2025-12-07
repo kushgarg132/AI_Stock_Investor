@@ -3,7 +3,7 @@ import operator
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 from backend.llm import llm_service
-from agents.tools import fetch_news_tool, fetch_stock_info_tool, fetch_price_history_tool
+from backend.agents.tools import fetch_news_tool, fetch_stock_info_tool, fetch_price_history_tool
 import logging
 
 logger = logging.getLogger(__name__)

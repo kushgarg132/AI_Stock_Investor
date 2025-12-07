@@ -5,7 +5,7 @@ import logging
 
 import pandas as pd
 from backend.models import PriceCandle
-from core.support_resistance import SupportResistance
+from backend.core.support_resistance import SupportResistance
 
 logger = logging.getLogger(__name__)
 

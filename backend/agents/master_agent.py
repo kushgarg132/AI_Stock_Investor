@@ -5,7 +5,7 @@ from .analyst_agent import AnalystAgent
 from .quant_agent import QuantAgent
 from .risk_agent import RiskAgent
 from backend.llm import llm_service
-from configs.settings import settings
+from backend.configs.settings import settings
 # import httpx - removed
 import asyncio
 import logging
@@ -143,7 +143,7 @@ class MasterAgent:
         logger.info("Fetching company info...")
         # Keeping internal logic here or could move to an agent
         try:
-            from mcp_tools.stock_info_fetcher import fetch_stock_info_logic
+            from backend.mcp_tools.stock_info_fetcher import fetch_stock_info_logic
             info_obj = await fetch_stock_info_logic(state['symbol'])
             # info_obj is CompanyInfo model
             return {"company_info": info_obj.model_dump(mode='json')}

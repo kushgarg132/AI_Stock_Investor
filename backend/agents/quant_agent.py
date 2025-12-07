@@ -3,8 +3,8 @@ import pandas as pd
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict
 from backend.models import TradeSignal, SignalType, PriceCandle, Trend
-from core.strategies import TechnicalBreakout, MeanReversion, VolumeSurge, MACDCrossover
-from configs.settings import settings
+from backend.core.strategies import TechnicalBreakout, MeanReversion, VolumeSurge, MACDCrossover
+from backend.configs.settings import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,9 +21,9 @@ class QuantOutput(BaseModel):
     price_candles: List[Dict[str, Any]] = []  # Raw price data for charting
     market_data: Dict[str, Any] = {} # Expanded stats
 
-from mcp_tools.price_history_fetcher import fetch_price_history_logic
-from mcp_tools.trend_detector import detect_trend_logic
-from mcp_tools.support_resistance_detector import detect_support_resistance_logic
+from backend.mcp_tools.price_history_fetcher import fetch_price_history_logic
+from backend.mcp_tools.trend_detector import detect_trend_logic
+from backend.mcp_tools.support_resistance_detector import detect_support_resistance_logic
 
 class QuantAgent:
     def __init__(self):

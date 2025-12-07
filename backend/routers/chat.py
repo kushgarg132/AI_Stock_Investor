@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 import logging
-from agents.chat_agent import chat_agent
+from backend.agents.chat_agent import chat_agent
 
 router = APIRouter(
     prefix="/chat",
