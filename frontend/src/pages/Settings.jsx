@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { UserCog, Key, Save, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
+import api from '../utils/api';
 
 const Settings = () => {
     const [apiKey, setApiKey] = useState('');
@@ -14,11 +15,8 @@ const Settings = () => {
 
     const fetchKeyStatus = async () => {
         try {
-            const response = await fetch('http://localhost:8001/api/v1/settings/gemini-keys');
-            if (response.ok) {
-                const data = await response.json();
-                setKeyStatus({ isSet: data.is_set, maskedKey: data.masked_key || '' });
-            }
+            const response = await api.get('/settings/gemini-keys');
+            setKeyStatus({ isSet: response.data.is_set, maskedKey: response.data.masked_key || '' });
         } catch (error) {
             console.error('Failed to fetch key status:', error);
         }
@@ -33,21 +31,13 @@ const Settings = () => {
 
         setStatus({ loading: true, message: '', type: '' });
         try {
-            const response = await fetch('http://localhost:8001/api/v1/settings/gemini-keys', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gemini_api_key: apiKey }),
-            });
+            await api.post('/settings/gemini-keys', { gemini_api_key: apiKey });
 
-            if (response.ok) {
-                setStatus({ message: 'API Key saved successfully!', type: 'success' });
-                setApiKey('');
-                fetchKeyStatus();
-            } else {
-                setStatus({ message: 'Failed to save API key', type: 'error' });
-            }
+            setStatus({ message: 'API Key saved successfully!', type: 'success' });
+            setApiKey('');
+            fetchKeyStatus();
         } catch (error) {
-            setStatus({ message: 'Error connecting to server', type: 'error' });
+            setStatus({ message: 'Failed to save API key', type: 'error' });
         } finally {
             setStatus(prev => ({ ...prev, loading: false }));
         }
