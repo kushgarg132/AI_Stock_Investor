@@ -35,6 +35,7 @@ A comprehensive, agentic AI platform for autonomous stock analysis, trading simu
 - **AI/LLM**: LangChain, LangGraph, Google Gemini Pro
 - **Data Processing**: TA-Lib (Technical Analysis), yfinance (Market Data), BeautifulSoup (Web Scraping)
 - **Database**: MongoDB (Persistent Storage), Redis (Caching & Pub/Sub)
+- **Testing**: pytest (Unit & Integration Tests)
 
 ### Frontend
 
@@ -106,6 +107,17 @@ A comprehensive, agentic AI platform for autonomous stock analysis, trading simu
    npm run dev
    ```
 
+### 🧪 Running Tests
+
+To run the backend unit tests:
+
+1. Navigate to the `backend/` directory.
+2. Ensure your virtual environment is active.
+3. Run `pytest`:
+   ```bash
+   python -m pytest backend/tests
+   ```
+
 ---
 
 ## 📂 Project Structure
@@ -117,6 +129,7 @@ AI_Stock_Investor/
 │   ├── core/            # Core trading strategies and backtester
 │   ├── mcp_tools/       # Tools for data fetching and analysis
 │   ├── routers/         # FastAPI endpoints
+│   ├── tests/           # Unit tests (Agents, Tools, Routers)
 │   ├── configs/         # Settings and logging configurations
 │   ├── Dockerfile
 │   └── requirements.txt

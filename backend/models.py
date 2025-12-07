@@ -56,7 +56,7 @@ class PriceCandle(BaseModel):
     adj_close: Optional[float] = None
     volume: float
 
-class TradeSignal(BaseModel):
+class BacktestResult(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
     symbol: str
@@ -69,6 +69,21 @@ class TradeSignal(BaseModel):
     max_drawdown: float
     sharpe_ratio: float
     trades: List[Dict[str, Any]] # List of individual trade details
+
+
+class TradeSignal(BaseModel):
+    """Represents a single actionable trade signal"""
+    model_config = ConfigDict(use_enum_values=True)
+    
+    symbol: str
+    signal: SignalType
+    conviction: float = 0.0 # 0.0 to 1.0
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    target_price: Optional[float] = None
+    position_size: Optional[float] = 0.0
+    timeframe: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class CompanyInfo(BaseModel):

@@ -38,7 +38,9 @@ async def run_simulation():
             # For this simulation, let's say we have $5 total and want to see if we can buy anything.
             output = await agent.run(symbol, account_size=budget)
             
-            print(f"Decision: {output.decision.value.upper()}")
+            # Handle decision enum or string
+            decision_val = output.decision.value if hasattr(output.decision, 'value') else str(output.decision)
+            print(f"Decision: {decision_val.upper()}")
             print(f"Reasoning: {output.reasoning}")
             
             if output.final_signal:
