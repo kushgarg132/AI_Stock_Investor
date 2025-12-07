@@ -115,4 +115,10 @@ class LLMService:
             
         return MultiKeyChain(llms)
 
+    def reload_keys(self):
+        """Reloads keys from global settings"""
+        from backend.configs.settings import settings
+        self.keys = settings.GEMINI_API_KEYS
+        logger.info(f"LLMService keys reloaded. Count: {len(self.keys)}")
+
 llm_service = LLMService()
