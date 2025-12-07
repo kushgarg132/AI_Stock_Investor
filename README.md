@@ -62,7 +62,7 @@ A comprehensive, agentic AI platform for autonomous stock analysis, trading simu
 1. **Clone the repository**
 
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/kushgarg132/AI_Stock_Investor.git
    cd AI_Stock_Investor
    ```
 
