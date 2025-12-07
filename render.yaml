@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: ai-stock-investor-backend
+    runtime: docker
+    repo: https://github.com/REPLACE_WITH_YOUR_GITHUB_USER/AI_Stock_Investor # User will need to update this
+    rootDir: backend
+    plan: free
+    envVars:
+      - key: MONGODB_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NEWS_API_KEY
+        sync: false
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
+      - key: FMP_API_KEY
+        sync: false
