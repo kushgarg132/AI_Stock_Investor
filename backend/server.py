@@ -79,6 +79,7 @@ app.include_router(chat.router, prefix=f"{settings.API_PREFIX}/chat", tags=["Cha
 from backend.routers import market_data
 app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"])
 
+@app.head("/")
 @app.get("/")
 async def root():
     return {"message": "AI Stock Investor API is running"}
