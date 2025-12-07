@@ -14,6 +14,7 @@ from langgraph.graph import StateGraph, END
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from backend.agents.search_tool import resolve_company_query
+from backend.core.memory import memory_manager
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,7 @@ class AgentState(TypedDict):
     final_signal: Optional[Dict[str, Any]]
     
     messages: Annotated[List[BaseMessage], operator.add]
+    past_memories: List[Dict[str, Any]]
 
 # --- Master Agent ---
 class MasterAgent:
@@ -128,7 +130,15 @@ class MasterAgent:
 
     async def start_node(self, state: AgentState):
         logger.info(f"Starting analysis for {state['symbol']}")
-        return {"messages": [HumanMessage(content=f"Analysis started for {state['symbol']}")]}
+        # formatted_memories = [] # Could format this for the prompt later
+        memories = await memory_manager.get_memories(state['symbol'], limit=3)
+        if memories:
+            logger.info(f"Found {len(memories)} past memories for {state['symbol']}")
+            
+        return {
+            "messages": [HumanMessage(content=f"Analysis started for {state['symbol']}")],
+            "past_memories": memories
+        }
 
     async def analyst_node(self, state: AgentState):
         result = await self.analyst.analyze(state) # Modified to accept state
@@ -183,6 +193,15 @@ class MasterAgent:
         )
         
         # Construct output dicts
+        
+        # Save to memory
+        await memory_manager.add_memory(
+            symbol=state['symbol'],
+            content=reasoning,
+            decision=decision,
+            memory_type="full_analysis"
+        )
+        
         return {
             "decision": decision,
             "reasoning": reasoning,
@@ -202,7 +221,8 @@ class MasterAgent:
             "peers": [],
             "decision": SignalType.HOLD,
             "reasoning": "",
-            "messages": [HumanMessage(content=f"Input: {symbol}")]
+            "messages": [HumanMessage(content=f"Input: {symbol}")],
+            "past_memories": []
         }
         
         # Run graph
