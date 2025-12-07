@@ -1,103 +1,139 @@
 # AI Stock Investor
 
-A comprehensive multi-agent system for autonomous stock analysis and trading. This project leverages specialized AI agents (Analyst, Quant, Risk) orchestrated by a Master Agent to make informed trading decisions based on fundamental news, technical analysis, and strict risk management rules.
+A comprehensive, agentic AI platform for autonomous stock analysis, trading simulation, and personalized investment insights. This system leverages a multi-agent architecture (Master, Analyst, Quant, Risk, Chat) to provide deep fundamental and technical analysis combined with strict risk management.
 
 ## Live Demo
 
-- **Frontend**: [https://ai-stock-investor.vercel.app/](https://ai-stock-investor.vercel.app/)
-- **Backend API**: [https://ai-stock-investor.onrender.com](https://ai-stock-investor.onrender.com)
+- **Frontend (UI)**: [https://ai-stock-investor.vercel.app/](https://ai-stock-investor.vercel.app/)
+- **Backend (API)**: [https://ai-stock-investor.onrender.com](https://ai-stock-investor.onrender.com)
 
-## Features
+---
 
-- **Multi-Agent Architecture**:
-  - **Master Agent**: Orchestrates the workflow and makes final decisions.
-  - **Analyst Agent**: Analyzes news sentiment and financial events using LLMs.
-  - **Quant Agent**: Performs technical analysis using strategies like Breakout, Mean Reversion, and Volume Surge.
-  - **Risk Agent**: Validates trades against position sizing and exposure limits.
-- **MCP-style Backend**: A FastAPI server acting as a Model Context Protocol layer, exposing tools for data fetching and analysis.
-- **Backtesting Engine**: Simulate strategies against historical data.
-- **Technical Indicators**: Built-in library for RSI, SMA, EMA, Bollinger Bands, etc.
+## 🚀 Key Features
 
-## Prerequisites
+### 🤖 Multi-Agent AI Core
 
-- **Python 3.8+**
-- **MongoDB**: For data persistence (ensure it's running locally or provide URL).
-- **Redis**: For caching and messaging (ensure it's running locally).
-- **OpenAI API Key**: For LLM-based sentiment analysis and summaries.
+- **Master Agent**: Orchestrates the analysis workflow, synthesizing inputs from all sub-agents to make final Buy/Sell/Hold recommendations.
+- **Analyst Agent**: Scrapes and analyzes financial news and sentiment using LLMs (Google Gemini) to understand market mood.
+- **Quant Agent**: Performs rigorous technical analysis using TA-Lib (RSI, MACD, Bollinger Bands, Moving Averages) to identify trends and signals.
+- **Risk Agent**: Evaluates trades against predefined risk rules, position sizing constraints, and portfolio exposure limits.
+- **Chat Agent**: An interactive assistant that allows users to query stock data, ask for summaries, and get real-time insights via a chat interface.
 
-## Installation
+### 📊 Modern User Interface
 
-1.  **Clone the repository**
+- **Interactive Dashboard**: Real-time view of market trends, indices (NIFTY 50, SENSEX), and top trending stocks.
+- **Deep Analysis Cards**: Detailed visualization of stock performance, including dynamic price charts, technical signals, and AI-generated reasoning.
+- **Stock Scanner**: dedicated tool to scan the market for bullish or bearish setups based on technical criteria.
+- **Investment Goals**: A specialized module to define and track personalized investment objectives.
+- **Smart Chat Widget**: Floating chat interface for instant AI assistance.
 
-    ```bash
-    git clone <repository-url>
-    cd AI_Stock_Investor
-    ```
+## 🛠️ Tech Stack
 
-2.  **Create and activate a virtual environment**
+### Backend
 
-    ```bash
-    python -m venv .venv
-    # Windows
-    .venv\Scripts\activate
-    # Linux/Mac
-    source .venv/bin/activate
-    ```
+- **Framework**: FastAPI (Python 3.11+)
+- **AI/LLM**: LangChain, LangGraph, Google Gemini Pro
+- **Data Processing**: TA-Lib (Technical Analysis), yfinance (Market Data), BeautifulSoup (Web Scraping)
+- **Database**: MongoDB (Persistent Storage), Redis (Caching & Pub/Sub)
 
-3.  **Install dependencies**
-    ```bash
-    pip install -r requirements.txt
-    ```
+### Frontend
 
-## Configuration
+- **Framework**: React.js (Vite)
+- **Styling**: Modern CSS3, Responsive Design
+- **State/API**: Axios, React Hooks
 
-1.  **Environment Variables**:
-    The application uses `pydantic-settings`. You can set these via environment variables or a `.env` file.
+### Infrastructure
 
-    Key variables (see `configs/settings.py` for defaults):
+- **Containerization**: Docker, Docker Compose
+- **Deployment**: Render (Backend), Vercel (Frontend)
 
-    - `OPENAI_API_KEY`: Required for Analyst Agent.
-    - `MONGODB_URL`: Default `mongodb://localhost:27017`
-    - `REDIS_URL`: Default `redis://localhost:6379`
+---
 
-## Usage
+## ⚙️ Installation & Setup
 
-### 1. Run the API Server
+### Prerequisites
 
-Start the backend server which exposes the tools and agents.
+- Docker & Docker Compose (Recommended)
+- OR Python 3.11+, Node.js 18+, MongoDB, and Redis installed locally.
+- API Keys: Google Gemini API Key (Required), NewsAPI/FMP (Optional).
 
-```bash
-uvicorn backend.server:app --reload
+### Option 1: Docker (Fastest)
+
+1. **Clone the repository**
+
+   ```bash
+   git clone <repository-url>
+   cd AI_Stock_Investor
+   ```
+
+2. **Setup Environment Variables**
+   Create a `.env` file in the root directory:
+
+   ```env
+   GEMINI_API_KEY=your_gemini_key_here
+   MONGODB_URL=mongodb://mongo:27017
+   REDIS_URL=redis://redis:6379
+   ```
+
+3. **Run with Docker Compose**
+   ```bash
+   docker-compose up --build
+   ```
+   The backend will be available at `http://localhost:8000` and frontend at `http://localhost:5173`.
+
+### Option 2: Manual Setup
+
+#### Backend
+
+1. Navigate to `backend/`:
+   ```bash
+   cd backend
+   python -m venv .venv
+   source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+   pip install -r requirements.txt
+   ```
+2. Run the server (ensure Mongo/Redis are running):
+   ```bash
+   uvicorn server:app --reload --port 8000
+   ```
+
+#### Frontend
+
+1. Navigate to `frontend/`:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+---
+
+## 📂 Project Structure
+
+```
+AI_Stock_Investor/
+├── backend/
+│   ├── agents/          # Agent logic (Master, Quant, Analyst, etc.)
+│   ├── core/            # Core trading strategies and backtester
+│   ├── mcp_tools/       # Tools for data fetching and analysis
+│   ├── routers/         # FastAPI endpoints
+│   ├── configs/         # Settings and logging configurations
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── components/  # Reusable UI components (AnalysisCard, ChatWidget)
+│   │   ├── pages/       # Main pages (Dashboard, Scanner, Goals)
+│   │   └── utils/       # API integration
+│   └── package.json
+│
+└── docker-compose.yml   # Container orchestration
 ```
 
-The API will be available at `http://localhost:8000`.
-Docs: `http://localhost:8000/api/v1/docs`
+## 📄 API Documentation
 
-### 2. Run a Backtest
+Once the backend is running, visit:
 
-Test the strategies against historical data.
-
-```bash
-python run_backtest.py
-```
-
-### 3. Verify System
-
-Run a quick health check and a test agent flow for a single symbol (e.g., AAPL).
-
-```bash
-python verify_system.py
-```
-
-## Documentation
-
-For a detailed explanation of the project structure and file purposes, please refer to [project_overview.md](project_overview.md).
-For detailed System Architecture and User Flow diagrams, please refer to [ARCHITECTURE.md](ARCHITECTURE.md).
-
-## Project Structure
-
-- `agents/`: AI Agents logic.
-- `backend/`: FastAPI server and database connections.
-- `core/`: Core trading logic (strategies, indicators, backtester).
-- `mcp_tools/`: API endpoints exposed as tools.
-- `configs/`: Configuration settings.
+- **Swagger UI**: `http://localhost:8000/api/v1/docs`
+- **ReDoc**: `http://localhost:8000/api/v1/redoc`
