@@ -78,10 +78,10 @@ async def fetch_price_history_logic(symbol: str, period: str = "1mo", interval: 
                 return candles, source
                 
             else:
-                 logger.debug(f"No price data for {try_symbol}, trying next suffix...")
+                 logger.info(f"No price data for {try_symbol}, trying next suffix...")
         
         except Exception as e:
-            logger.debug(f"Error fetching price history for {try_symbol}: {e}")
+            logger.info(f"Error fetching price history for {try_symbol}: {e}")
             continue
 
     # If all fail

@@ -49,12 +49,17 @@ async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
             
             # Check if valid data came back
             # yfinance often returns empty info or {'regularMarketPrice': None} for invalid symbols
-            if not info or ('regularMarketPrice' not in info and 'currentPrice' not in info and len(info) < 5):
+            # Check if valid data came back
+            # yfinance often returns empty info or {'regularMarketPrice': None} for invalid symbols
+            current_price_val = info.get('regularMarketPrice') or info.get('currentPrice')
+            
+            if not info or current_price_val is None:
                  # Try history as fallback check
+                 # data might be missing, but let's see if we can get price from history
                 hist = ticker.history(period="5d")
                 if hist.empty:
                     # This attempt failed, continue to next suffix
-                    logger.debug(f"No data for {try_symbol}, trying next...")
+                    logger.info(f"No price data or history for {try_symbol}, trying next...")
                     continue
                 
                 # If history exists, we have a match
@@ -127,7 +132,7 @@ async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
             return company_info
             
         except Exception as e:
-            logger.debug(f"Error fetching {try_symbol}: {e}")
+            logger.info(f"Error fetching {try_symbol}: {e}")
             last_exception = e
             continue
 

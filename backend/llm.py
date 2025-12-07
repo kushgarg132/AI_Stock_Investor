@@ -1,53 +1,118 @@
-from google import genai
-from google.genai import types
+
 from backend.configs.settings import settings
-from typing import Optional
+from typing import Optional, List, Any, AsyncIterator, Dict, Union
 import logging
 import asyncio
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import Runnable, RunnableConfig
 
 logger = logging.getLogger(__name__)
 
+class MultiKeyChain(Runnable):
+    def __init__(self, llms: List[Any]):
+        self.llms = llms
+        # Basic validation
+        if not self.llms:
+            raise ValueError("MultiKeyChain cannot be initialized with empty LLM list")
+
+    def bind_tools(self, tools: Any, **kwargs) -> "MultiKeyChain":
+        """Bind tools to all underlying LLMs"""
+        bound_llms = [llm.bind_tools(tools, **kwargs) for llm in self.llms]
+        return MultiKeyChain(bound_llms)
+
+    async def ainvoke(self, input: Any, config: Optional[RunnableConfig] = None, **kwargs) -> Any:
+        errors = []
+        for i, llm in enumerate(self.llms):
+            try:
+                if i > 0:
+                    logger.info(f"Fallback: Switching to API Key #{i+1}")
+                return await llm.ainvoke(input, config, **kwargs)
+            except Exception as e:
+                logger.warning(f"Error with API Key #{i+1}: {e}")
+                errors.append(e)
+        
+        raise Exception(f"All API keys failed. Last error: {errors[-1]}")
+
+
+
+    async def astream_events(self, input: Any, config: Optional[RunnableConfig] = None, **kwargs) -> AsyncIterator[Any]:
+        errors = []
+        for i, llm in enumerate(self.llms):
+            try:
+                if i > 0:
+                    logger.info(f"Fallback: Switching to API Key #{i+1}")
+                async for event in llm.astream_events(input, config, **kwargs):
+                    yield event
+                return
+            except Exception as e:
+                logger.warning(f"Error with API Key #{i+1}: {e}")
+                errors.append(e)
+        
+        raise Exception(f"All API keys failed. Last error: {errors[-1]}")
+    
+    def invoke(self, input: Any, config: Optional[RunnableConfig] = None, **kwargs) -> Any:
+        errors = []
+        for i, llm in enumerate(self.llms):
+            try:
+                if i > 0:
+                    logger.info(f"Fallback: Switching to API Key #{i+1}")
+                return llm.invoke(input, config, **kwargs)
+            except Exception as e:
+                logger.warning(f"Error with API Key #{i+1}: {e}")
+                errors.append(e)
+        raise Exception(f"All API keys failed. Last error: {errors[-1]}")
+
+
+
 class LLMService:
-    client: Optional[genai.Client] = None
+
 
     def __init__(self):
-        if settings.GEMINI_API_KEY:
-            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        else:
-            logger.warning("GEMINI_API_KEY not set. LLM features will be disabled or mocked.")
+        # We prefer using LangChain for agents, but this client is for direct single usage if needed
+        self.keys = settings.GEMINI_API_KEYS
+        if not self.keys:
+            logger.warning("GEMINI_API_KEY(S) not set. LLM features will be disabled.")
 
     async def get_completion(self, prompt: str, system_prompt: str = "You are a helpful assistant.") -> str:
-        if not self.client:
+        llm = self.get_llm()
+        if not llm:
             return "LLM_DISABLED"
         
         try:
-            # Run the synchronous generate_content in a thread pool to make it async-compatible
-            response = await asyncio.to_thread(
-                self.client.models.generate_content,
-                model="gemini-pro-latest",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    temperature=0.0
-                )
-            )
-            return response.text
+            # MultiKeyChain or ChatGoogleGenerativeAI supports ainvoke
+            from langchain_core.messages import HumanMessage, SystemMessage
+            
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=prompt)
+            ]
+            
+            response = await llm.ainvoke(messages)
+            return response.content
         except Exception as e:
             logger.error(f"LLM Error: {e}")
-            # Fallback or re-raise depending on desired behavior. 
-            # For now, we'll return an error string so the app doesn't crash.
             return f"Error generating response: {str(e)}"
 
     def get_llm(self):
-        """Returns a LangChain ChatGoogleGenerativeAI instance"""
+        """Returns a MultiKeyChain wrapping ChatGoogleGenerativeAI instances"""
         from langchain_google_genai import ChatGoogleGenerativeAI
-        if not settings.GEMINI_API_KEY:
+        
+        keys = self.keys
+        if not keys:
             return None
-        return ChatGoogleGenerativeAI(
-            model="gemini-pro-latest",
-            google_api_key=settings.GEMINI_API_KEY,
-            temperature=0.0,
-            max_retries=0
-        )
+            
+        llms = []
+        for key in keys:
+            llms.append(ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash",
+                google_api_key=key,
+                temperature=0.0,
+                max_retries=0 # We handle retries via rotation
+            ))
+            
+        if len(llms) == 1:
+            return llms[0]
+            
+        return MultiKeyChain(llms)
 
 llm_service = LLMService()

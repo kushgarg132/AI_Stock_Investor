@@ -8,7 +8,7 @@ import TrendingStocks from './dashboard/TrendingStocks';
 import WatchlistWidget from './dashboard/WatchlistWidget';
 import AnalysisCard from './AnalysisCard';
 import { Badge } from './common/Badge';
-import { AlertCircle, Zap, Brain, ChartLine, Shield, TrendingUp } from 'lucide-react';
+import { AlertCircle, Zap, Brain, ChartLine, Shield, TrendingUp, ArrowLeft } from 'lucide-react';
 
 const Dashboard = () => {
   const [data, setData] = useState(null);
@@ -67,6 +67,13 @@ const Dashboard = () => {
     }
   };
 
+  const handleClear = () => {
+    setData(null);
+    setError(null);
+    setSymbol(""); // Clear search bar symbol if needed, though strictly not in state
+    window.history.replaceState({}, document.title);
+  };
+
   return (
     <Layout>
       <div className="flex flex-col gap-8 min-h-[calc(100vh-100px)]">
@@ -119,7 +126,16 @@ const Dashboard = () => {
         {/* Compressed Header when showing results */}
         {(data || loading) && (
             <div className="flex flex-col md:flex-row gap-4 items-center justify-between pb-6 border-b border-border/50 animate-in fade-in">
-                 <h2 className="text-2xl font-bold hidden md:block">Dashboard</h2>
+                 <div className="flex items-center gap-4">
+                    <button 
+                        onClick={handleClear}
+                        className="p-2 rounded-lg hover:bg-white/5 text-muted-foreground hover:text-white transition-colors"
+                        title="Back to Dashboard"
+                    >
+                        <ArrowLeft className="w-6 h-6" />
+                    </button>
+                    <h2 className="text-2xl font-bold hidden md:block">Dashboard</h2>
+                 </div>
                  <SmartSearch onSearch={handleSearch} isLoading={loading} className="w-full md:w-96" />
             </div>
         )}

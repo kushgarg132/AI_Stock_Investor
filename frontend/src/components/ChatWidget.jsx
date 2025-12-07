@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Bot, User, Loader2, Sparkles, Minimize2, Maximize2 } from 'lucide-react';
 import api from '../utils/api';
 import { clsx } from 'clsx';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,6 +13,7 @@ const ChatWidget = () => {
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [thinkingText, setThinkingText] = useState('');
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -19,7 +22,7 @@ const ChatWidget = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isOpen]);
+  }, [messages, isOpen, thinkingText]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -29,22 +32,82 @@ const ChatWidget = () => {
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: userMsg }]);
     setIsLoading(true);
+    setThinkingText('Processing...');
 
     try {
-      // Build history for context (last 10 messages)
+      // Build history
       const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
       
-      const response = await api.post('/chat/message', {
-        message: userMsg,
-        history: history
+      const response = await fetch(`${api.defaults.baseURL}/chat/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMsg,
+          history: history
+        })
       });
 
-      setMessages(prev => [...prev, { role: 'assistant', content: response.data.response }]);
+      if (!response.ok) throw new Error(response.statusText);
+
+      // Create a new assistant message placeholder
+      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process buffer line by line
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || ''; // Keep incomplete last chunk
+        
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            const [eventLine, dataLine] = line.split('\n');
+            const eventType = eventLine.replace('event: ', '').trim();
+            const dataStr = dataLine ? dataLine.replace('data: ', '') : '{}';
+            
+            if (eventType === 'done') {
+                setIsLoading(false);
+                setThinkingText('');
+                break;
+            }
+            
+            try {
+                const data = JSON.parse(dataStr);
+                
+                if (eventType === 'thinking') {
+                    setThinkingText(data.text || 'Thinking...');
+                } else if (eventType === 'content') {
+                    setMessages(prev => {
+                        const newMsgs = [...prev];
+                        const lastMsg = newMsgs[newMsgs.length - 1];
+                        if (lastMsg.role === 'assistant' && typeof data.text === 'string') {
+                            lastMsg.content += data.text;
+                        }
+                        return newMsgs;
+                    });
+                }
+            } catch (e) {
+                console.error("Error parsing stream data", e);
+            }
+          }
+        }
+      }
+
     } catch (error) {
       console.error('Chat error:', error);
       setMessages(prev => [...prev, { role: 'assistant', content: "Sorry, I encountered an error. Please try again." }]);
     } finally {
       setIsLoading(false);
+      setThinkingText('');
     }
   };
 
@@ -100,7 +163,12 @@ const ChatWidget = () => {
                     ? "bg-blue-600 text-white rounded-tr-sm" 
                     : "bg-white/10 text-slate-200 rounded-tl-sm border border-white/5"
                 )}>
-                  {msg.content}
+                  <div 
+                    className="prose prose-invert prose-sm max-w-none break-words [&>a]:text-blue-300 [&>a]:break-all [&>table]:w-full [&>table]:border-collapse [&>table]:border [&>table]:border-white/20 [&>th]:border [&>th]:border-white/20 [&>th]:p-2 [&>th]:bg-white/5 [&>th]:text-left [&>td]:border [&>td]:border-white/20 [&>td]:p-2"
+                    dangerouslySetInnerHTML={{ 
+                      __html: DOMPurify.sanitize(marked.parse(msg.content)) 
+                    }} 
+                  />
                 </div>
               </div>
             ))}
@@ -109,9 +177,9 @@ const ChatWidget = () => {
                 <div className="w-8 h-8 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
                   <Bot className="w-4 h-4" />
                 </div>
-                <div className="p-3 rounded-2xl bg-white/10 text-slate-200 rounded-tl-sm border border-white/5 flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400" />
-                  <span className="text-xs text-slate-400">Thinking...</span>
+                <div className="p-3 rounded-2xl bg-white/5 text-slate-200 rounded-tl-sm border border-white/5 flex items-center gap-3 max-w-[80%]">
+                  <Loader2 className="w-4 h-4 animate-spin text-indigo-400 shrink-0" />
+                  <span className="text-xs font-mono text-indigo-200/70 break-words leading-relaxed">{thinkingText}</span>
                 </div>
               </div>
             )}

@@ -4,7 +4,10 @@ import sys
 import os
 
 # Ensure project root is in path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Ensure project root is in path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
 
 from mcp_tools.stock_info_fetcher import fetch_stock_info_logic
 from mcp_tools.price_history_fetcher import fetch_price_history_logic

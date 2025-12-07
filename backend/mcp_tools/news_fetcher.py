@@ -35,24 +35,35 @@ async def fetch_news_logic(symbols: List[str], limit: int = 10) -> List[NewsArti
     
     import yfinance as yf
     
+    suffixes = ["", ".NS", ".BO"]
+
     for symbol in symbols:
+        found_news = []
+        used_symbol = symbol
+        
+        # Try suffixes until we find news
+        for suffix in suffixes:
+            try_symbol = f"{symbol}{suffix}"
+            try:
+                logger.debug(f"Fetching news from yfinance for {try_symbol}")
+                ticker = yf.Ticker(try_symbol)
+                fetched = ticker.news
+                if fetched:
+                    found_news = fetched
+                    used_symbol = try_symbol
+                    logger.debug(f"Retrieved {len(fetched)} news items for {try_symbol}")
+                    break
+            except Exception as e:
+                logger.debug(f"Failed to fetch news for {try_symbol}: {e}")
+                continue
+        
+        if not found_news:
+            logger.warning(f"No news found for {symbol} (tried suffixes: {suffixes})")
+            continue
+            
+        # Process found news
         try:
-            logger.debug(f"Fetching news from yfinance for {symbol}")
-            ticker = yf.Ticker(symbol)
-            news = ticker.news
-            logger.debug(f"Retrieved {len(news) if news else 0} news items for {symbol}")
-            
-            # yfinance news format:
-            # {
-            #   'uuid': '...',
-            #   'title': '...',
-            #   'publisher': '...',
-            #   'link': '...',
-            #   'providerPublishTime': 163...
-            #   'type': 'STORY'
-            # }
-            
-            for item in news:
+            for item in found_news:
                 if len(articles) >= limit:
                     break
                 
@@ -85,11 +96,11 @@ async def fetch_news_logic(symbols: List[str], limit: int = 10) -> List[NewsArti
                     published_at=pub_time,
                     content=None, 
                     sentiment=None, 
-                    related_symbols=[symbol]
+                    related_symbols=[used_symbol]
                 ))
                 
         except Exception as e:
-            logger.error(f"Error fetching news for {symbol}: {e}")
+            logger.error(f"Error processing news for {used_symbol}: {e}")
             continue
             
     logger.info(f"News fetch complete. Returning {len(articles)} articles")

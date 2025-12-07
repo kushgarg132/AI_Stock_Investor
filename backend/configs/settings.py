@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
-from typing import Optional
+from pydantic import field_validator, ValidationInfo
+from typing import Optional, List
 
 class Settings(BaseSettings):
     # Project Info
@@ -17,9 +18,22 @@ class Settings(BaseSettings):
 
     # API Keys (Set these in your .env file)
     GEMINI_API_KEY: Optional[str] = None
+    GEMINI_API_KEYS: List[str] = []
+    
     NEWS_API_KEY: Optional[str] = None
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
     FMP_API_KEY: Optional[str] = None
+
+    @field_validator("GEMINI_API_KEYS", mode="before")
+    @classmethod
+    def assemble_gemini_keys(cls, v: Optional[List[str]], info: ValidationInfo) -> List[str]:
+        if isinstance(v, list) and v:
+            return v
+        # Fallback to splitting the single key if it contains commas, or just using it
+        values = info.data.get("GEMINI_API_KEY")
+        if values:
+            return [k.strip() for k in values.split(",") if k.strip()]
+        return []
 
     # System Settings
     LOG_LEVEL: str = "INFO"
