@@ -7,7 +7,8 @@ import {
   LineChart, 
   Settings, 
   Wallet,
-  BookMarked
+  BookMarked,
+  Network 
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -16,6 +17,7 @@ const Sidebar = () => {
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: ScanLine, label: 'Scanner', path: '/scanner' },
     { icon: Target, label: 'Goals', path: '/goals' },
+    { icon: Network, label: 'System', path: '/system' },
     { icon: BookMarked, label: 'Watchlist', path: '/watchlist' }, // Placeholder
     { icon: Wallet, label: 'Portfolio', path: '/portfolio' }, // Placeholder
     { icon: Settings, label: 'Settings', path: '/settings' }, // Placeholder

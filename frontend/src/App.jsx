@@ -7,6 +7,8 @@ import Watchlist from './pages/Watchlist';
 import Portfolio from './pages/Portfolio';
 import Settings from './pages/Settings';
 
+import SystemArchitecturePage from './pages/SystemArchitecturePage';
+
 const App = () => {
   return (
     <Routes>
@@ -16,6 +18,7 @@ const App = () => {
       <Route path="/watchlist" element={<Watchlist />} />
       <Route path="/portfolio" element={<Portfolio />} />
       <Route path="/settings" element={<Settings />} />
+      <Route path="/system" element={<SystemArchitecturePage />} />
     </Routes>
   );
 };
