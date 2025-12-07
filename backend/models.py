@@ -125,3 +125,12 @@ class CompanyInfo(BaseModel):
     operating_margins: Optional[float] = None
     gross_margins: Optional[float] = None
 
+    gross_margins: Optional[float] = None
+
+
+class Watchlist(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+    
+    user_id: str
+    symbols: List[str] = []
+    updated_at: datetime = Field(default_factory=datetime.utcnow)

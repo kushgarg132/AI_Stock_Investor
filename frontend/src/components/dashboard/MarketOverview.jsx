@@ -3,7 +3,7 @@ import { Card, CardContent } from '../common/Card';
 import { ArrowUp, ArrowDown, Activity } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-const MarketOverview = ({ indices, isLoading }) => {
+const MarketOverview = ({ indices, isLoading, onIndexClick }) => {
     if (isLoading) {
         return (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -21,7 +21,11 @@ const MarketOverview = ({ indices, isLoading }) => {
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             {indices.map((idx) => (
-                <Card key={idx.name} className="hover:border-primary/30 transition-colors">
+                <Card 
+                    key={idx.name} 
+                    className="hover:border-primary/50 transition-all cursor-pointer hover:shadow-lg hover:shadow-primary/5"
+                    onClick={() => onIndexClick && onIndexClick(idx.symbol)}
+                >
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">{idx.name}</p>

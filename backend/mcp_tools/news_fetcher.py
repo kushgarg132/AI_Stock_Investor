@@ -26,6 +26,16 @@ async def fetch_news(request: NewsFetchRequest):
     articles = await fetch_news_logic(request.symbols, request.limit)
     return NewsFetchResponse(articles=articles)
 
+@router.get("/news/market", response_model=NewsFetchResponse)
+async def fetch_market_news():
+    """
+    Fetches general market news using proxies (Sensex, Nifty).
+    """
+    # Use Indices as proxies for general market news
+    proxies = ["^BSESN", "^NSEI"] 
+    articles = await fetch_news_logic(proxies, limit=10)
+    return NewsFetchResponse(articles=articles)
+
 async def fetch_news_logic(symbols: List[str], limit: int = 10) -> List[NewsArticle]:
     """
     Core logic to fetch news from yfinance.

@@ -15,9 +15,8 @@ INDICES = {
     "INDIA VIX": "^INDIAVIX" # Might need verification, fallback to ^VIX if fails?
 }
 
-# Popular stocks for "Trending" (since we don't have a real trending API)
-TRENDING_SYMBOLS = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ADANIENT.NS", "TATAMOTORS.NS"]
 
+# NIFTY 50 Symbols
 async def fetch_ticker_data(symbol: str, name: str) -> Dict[str, Any]:
     try:
         ticker = yf.Ticker(symbol)
@@ -50,6 +49,40 @@ async def fetch_ticker_data(symbol: str, name: str) -> Dict[str, Any]:
         logger.error(f"Error fetching {symbol}: {e}")
         return None
 
+NIFTY_50_SYMBOLS = [
+    "ADANIENT.NS", "ADANIPORTS.NS", "APOLLOHOSP.NS", "ASIANPAINT.NS", "AXISBANK.NS",
+    "BAJAJ-AUTO.NS", "BAJFINANCE.NS", "BAJAJFINSV.NS", "BPCL.NS", "BHARTIARTL.NS",
+    "BRITANNIA.NS", "CIPLA.NS", "COALINDIA.NS", "DIVISLAB.NS", "DRREDDY.NS",
+    "EICHERMOT.NS", "GRASIM.NS", "HCLTECH.NS", "HDFCBANK.NS", "HDFCLIFE.NS",
+    "HEROMOTOCO.NS", "HINDALCO.NS", "HINDUNILVR.NS", "ICICIBANK.NS", "ITC.NS",
+    "INDUSINDBK.NS", "INFY.NS", "JSWSTEEL.NS", "KOTAKBANK.NS", "LT.NS",
+    "M&M.NS", "MARUTI.NS", "NTPC.NS", "NESTLEIND.NS", "ONGC.NS",
+    "POWERGRID.NS", "RELIANCE.NS", "SBILIFE.NS", "SBIN.NS", "SUNPHARMA.NS",
+    "TCS.NS", "TATACONSUM.NS", "TATAMOTORS.NS", "TATASTEEL.NS", "TECHM.NS",
+    "TITAN.NS", "ULTRACEMCO.NS", "UPL.NS", "WIPRO.NS"
+]
+
+# Simple in-memory cache
+class MarketCache:
+    def __init__(self):
+        self.data = None
+        self.last_updated = 0
+        self.ttl = 300  # 5 minutes
+
+    def get(self):
+        import time
+        if self.data and (time.time() - self.last_updated < self.ttl):
+            return self.data
+        return None
+
+    def set(self, data):
+        import time
+        self.data = data
+        self.last_updated = time.time()
+
+trending_cache = MarketCache()
+
+
 @router.get("/market/indices")
 async def get_market_indices():
     tasks = [fetch_ticker_data(sym, name) for name, sym in INDICES.items()]
@@ -59,20 +92,44 @@ async def get_market_indices():
 
 @router.get("/market/trending")
 async def get_trending_stocks():
-    # Fetch real data for our "Trending" list
-    # We can fetch names from yf.Ticker(sym).info but that's slow. 
-    # Hardcoding names for speed for now or fetching minimally.
+    # Check cache first
+    cached_data = trending_cache.get()
+    if cached_data:
+        return cached_data
+
+    # Fetch all NIFTY 50 stocks
+    # The name is just the symbol for now to save complexity/time on additional fetches, 
+    # or we could carry a map if specific names are needed.
+    tasks = [fetch_ticker_data(sym, sym) for sym in NIFTY_50_SYMBOLS]
+    results = await asyncio.gather(*tasks)
     
-    # Map for display names
-    NAMES = {
-        "RELIANCE.NS": "Reliance Industries",
-        "TCS.NS": "Tata Consultancy Svc",
-        "HDFCBANK.NS": "HDFC Bank",
-        "INFY.NS": "Infosys Ltd",
-        "ADANIENT.NS": "Adani Enterprises",
-        "TATAMOTORS.NS": "Tata Motors"
-    }
+    # Filter valid results and sort by absolute percentage change (volatility/trending)
+    valid_results = [r for r in results if r is not None]
     
-    tasks = [fetch_ticker_data(sym, NAMES.get(sym, sym)) for sym in TRENDING_SYMBOLS]
+    # Sort by absolute percent change descending
+    valid_results.sort(key=lambda x: abs(x['percent']), reverse=True)
+    
+    # Take top 6
+    top_trending = valid_results[:6]
+    
+    # Update cache
+    trending_cache.set(top_trending)
+    
+    return top_trending
+
+# Global Indices
+GLOBAL_INDICES = {
+    "S&P 500": "^GSPC",
+    "NASDAQ": "^IXIC",
+    "FTSE 100": "^FTSE",
+    "Nikkei 225": "^N225",
+    "DAX": "^GDAXI",
+}
+
+@router.get("/market/global")
+async def get_global_indices():
+    """Fetch global market indices."""
+    tasks = [fetch_ticker_data(sym, name) for name, sym in GLOBAL_INDICES.items()]
     results = await asyncio.gather(*tasks)
     return [r for r in results if r is not None]
+

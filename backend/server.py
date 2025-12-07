@@ -79,7 +79,10 @@ app.include_router(agents.router, prefix=f"{settings.API_PREFIX}/agents", tags=[
 app.include_router(chat.router, prefix=f"{settings.API_PREFIX}/chat", tags=["Chat"])
 
 from backend.routers import market_data
+from backend.routers import watchlist
+
 app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"])
+app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"])
 
 @app.head("/")
 @app.get("/")

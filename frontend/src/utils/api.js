@@ -25,6 +25,14 @@ export const endpoints = {
   stockInfo: (symbol) => `/stock_info/${symbol}`,
   marketIndices: '/market/indices',
   trendingStocks: '/market/trending',
+  watchlist: {
+    get: (userId) => `/watchlist/${userId}`,
+    add: (userId, symbol) => `/watchlist/${userId}/add?symbol=${symbol}`,
+    remove: (userId, symbol) => `/watchlist/${userId}/remove/${symbol}`,
+    details: (userId) => `/watchlist/${userId}/details`,
+  },
+  globalIndices: '/market/global',
+  marketNews: '/news/market'
 };
 
 export default api;

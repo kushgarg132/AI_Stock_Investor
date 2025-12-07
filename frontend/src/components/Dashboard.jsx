@@ -4,8 +4,10 @@ import { useLocation } from 'react-router-dom';
 import Layout from './Layout';
 import SmartSearch from './dashboard/SmartSearch';
 import MarketOverview from './dashboard/MarketOverview';
+import GlobalIndices from './dashboard/GlobalIndices';
+import MarketNewsWidget from './dashboard/MarketNewsWidget';
 import TrendingStocks from './dashboard/TrendingStocks';
-import WatchlistWidget from './dashboard/WatchlistWidget';
+
 import AnalysisCard from './AnalysisCard';
 import { Badge } from './common/Badge';
 import { AlertCircle, Zap, Brain, ChartLine, Shield, TrendingUp, ArrowLeft } from 'lucide-react';
@@ -16,7 +18,12 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   
   // Market Data State
-  const [marketData, setMarketData] = useState({ indices: [], trending: [] });
+    const [marketData, setMarketData] = useState({ 
+        indices: [], 
+        trending: [],
+        globalIndices: [],
+        marketNews: []
+    });
   const [marketLoading, setMarketLoading] = useState(true);
 
   const location = useLocation();
@@ -33,13 +40,17 @@ const Dashboard = () => {
   useEffect(() => {
       const fetchMarketData = async () => {
           try {
-              const [indicesRes, trendingRes] = await Promise.all([
+              const [indicesRes, trendingRes, globalRes, newsRes] = await Promise.all([
                   api.get(endpoints.marketIndices),
-                  api.get(endpoints.trendingStocks)
+                  api.get(endpoints.trendingStocks),
+                  api.get(endpoints.globalIndices),
+                  api.get(endpoints.marketNews)
               ]);
               setMarketData({
                   indices: indicesRes.data,
-                  trending: trendingRes.data
+                  trending: trendingRes.data,
+                  globalIndices: globalRes.data,
+                  marketNews: newsRes.data.articles
               });
           } catch (e) {
               console.error("Failed to fetch market data:", e);
@@ -101,14 +112,14 @@ const Dashboard = () => {
                 </div>
 
                 <div className="pt-8 space-y-8">
-                     <MarketOverview indices={marketData.indices} isLoading={marketLoading} />
+                     <MarketOverview indices={marketData.indices} isLoading={marketLoading} onIndexClick={handleSearch} />
                      
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="md:col-span-2">
-                            {/* Placeholder for broader market news or chart */}
-                            <div className="h-full min-h-[300px] rounded-xl border border-border bg-card/50 flex items-center justify-center text-muted-foreground">
-                                Market News Feed / Global Indices Chart
-                            </div>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+                                <GlobalIndices indices={marketData.globalIndices} isLoading={marketLoading} />
+                                <MarketNewsWidget articles={marketData.marketNews} isLoading={marketLoading} />
+                             </div>
                         </div>
                         <div className="space-y-6">
                              <TrendingStocks 
@@ -116,7 +127,7 @@ const Dashboard = () => {
                                 isLoading={marketLoading}
                                 onStockClick={handleSearch} 
                              />
-                             <WatchlistWidget />
+
                         </div>
                      </div>
                 </div>

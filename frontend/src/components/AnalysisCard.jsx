@@ -1,5 +1,6 @@
 import React from 'react';
-import { Building2, ArrowUp, ArrowDown, Globe } from 'lucide-react';
+import { Building2, ArrowUp, ArrowDown, Globe, BookMarked } from 'lucide-react';
+import api, { endpoints } from '../utils/api';
 import { Card, CardContent } from './common/Card';
 import { Badge } from './common/Badge';
 import { formatCurrency, formatCompactNumber, formatPercent } from '../utils/formatters';
@@ -54,7 +55,7 @@ const AnalysisCard = ({ data }) => {
              </div>
         </div>
 
-        <div className="text-left md:text-right">
+        <div className="flex flex-col items-end gap-2">
              <div className="text-4xl font-mono font-bold tracking-tight">{formatCurrency(company_info?.current_price, company_info?.currency)}</div>
              <div className={cn(
                  "flex items-center gap-2 text-lg font-medium justify-start md:justify-end",
@@ -64,6 +65,22 @@ const AnalysisCard = ({ data }) => {
                  <span>{formatCurrency(Math.abs(company_info?.day_change), company_info?.currency)}</span>
                  <span>({(company_info?.day_change_percent || 0).toFixed(2)}%)</span>
              </div>
+             
+             <button 
+                onClick={async () => {
+                    try {
+                        await api.post(endpoints.watchlist.add("default-user", company_info?.symbol));
+                        alert("Added to watchlist!"); 
+                    } catch (e) {
+                         console.error(e);
+                         alert("Failed to add to watchlist");
+                    }
+                }}
+                className="flex items-center gap-2 px-4 py-2 mt-2 text-sm font-medium bg-secondary/50 hover:bg-secondary text-secondary-foreground rounded-lg transition-colors border border-border"
+             >
+                 <BookMarked className="w-4 h-4" />
+                 Add to Watchlist
+             </button>
         </div>
       </div>
 
