@@ -17,6 +17,7 @@ class AnalystOutput(BaseModel):
     summary: str
     events: List[FinancialEvent]
     news_articles: List[Dict[str, Any]] = []  # Raw articles for UI display
+    sentiment_analysis: Dict[str, Any] = {} # Detailed breakdown
 
 from mcp_tools.news_fetcher import fetch_news_logic
 from mcp_tools.news_sentiment import analyze_sentiment_logic
@@ -86,6 +87,21 @@ class AnalystAgent:
         avg_sentiment = sum(a.get('sentiment_score', 0) for a in analyzed_articles) / len(analyzed_articles) if analyzed_articles else 0
         max_impact = max([a.get('impact_score', 0) for a in analyzed_articles] + [0])
         
+        # Determine Label
+        if avg_sentiment > 0.15:
+            label = "bullish"
+        elif avg_sentiment < -0.15:
+            label = "bearish"
+        else:
+            label = "neutral"
+            
+        sentiment_analysis = {
+            "score": float(f"{avg_sentiment:.2f}"),
+            "label": label,
+            "risk_score": max_impact, # Proxy for risk from news
+            "article_count": len(analyzed_articles)
+        }
+        
         logger.info(f"AnalystAgent: Analysis complete for {symbol}. Sentiment: {avg_sentiment:.2f}")
         return AnalystOutput(
             symbol=symbol,
@@ -93,7 +109,8 @@ class AnalystAgent:
             impact_score=max_impact,
             summary=summary,
             events=[FinancialEvent(**e) for e in events],
-            news_articles=analyzed_articles
+            news_articles=analyzed_articles,
+            sentiment_analysis=sentiment_analysis
         ).model_dump(mode='json')
 
     def _empty_output(self, symbol: str) -> AnalystOutput:

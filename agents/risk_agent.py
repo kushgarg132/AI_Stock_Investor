@@ -16,6 +16,7 @@ class RiskOutput(BaseModel):
     approved: bool
     adjusted_signal: Optional[TradeSignal]
     reason: str
+    risk_analysis: Dict[str, Any] = {}
 
 class RiskAgent:
     def __init__(self):
@@ -43,6 +44,28 @@ class RiskAgent:
         signals = quant_out['signals'] # These are dicts now
         sentiment_score = analyst_out['sentiment_score']
         
+        # Calculate Volatility & Risk Level
+        volatility_score = 0.0
+        risk_level = "Medium"
+        
+        try:
+            raw_candles = quant_out.get('price_candles', [])
+            if raw_candles:
+                df = pd.DataFrame(raw_candles)
+                if 'close' in df.columns:
+                    returns = df['close'].pct_change().dropna()
+                    # Annualized Volatility
+                    volatility_score = returns.std() * (252 ** 0.5)
+                    
+                    if volatility_score < 0.20:
+                        risk_level = "Low"
+                    elif volatility_score < 0.40:
+                        risk_level = "Medium"
+                    else:
+                        risk_level = "High"
+        except Exception as e:
+            logger.warning(f"RiskAgent: Failed to calculate volatility: {e}")
+
         best_signal = None
         reasoning = "No actionable signals generated."
         
@@ -64,11 +87,18 @@ class RiskAgent:
             target_signal_dict = sig_dict
             break
             
+        risk_analysis = {
+            "volatility_score": float(f"{volatility_score:.4f}"),
+            "risk_level": risk_level,
+            "max_drawdown": 0.0 # Placeholder or calculate from history
+        }
+
         if not target_signal_dict:
              return RiskOutput(
                  approved=False, 
                  adjusted_signal=None, 
-                 reason="All signals rejected by sentiment or no signals found"
+                 reason="All signals rejected by sentiment or no signals found",
+                 risk_analysis=risk_analysis
              ).model_dump(mode='json')
              
         # Risk Check
@@ -79,7 +109,8 @@ class RiskAgent:
              return RiskOutput(
                  approved=False, 
                  adjusted_signal=None, 
-                 reason="Signal missing entry or stop loss"
+                 reason="Signal missing entry or stop loss",
+                 risk_analysis=risk_analysis
              ).model_dump(mode='json')
 
         # Volatility Adjustment (ATR)
@@ -123,16 +154,23 @@ class RiskAgent:
                 # Update signal with calculated size
                 target_signal_dict['position_size'] = result_obj.position_size_shares
                 
+                # Add sizing to risk analysis
+                risk_analysis["suggested_entry"] = entry_price
+                risk_analysis["suggested_stop_loss"] = stop_loss
+                risk_analysis["suggested_position_size"] = result_obj.position_size_shares
+                
                 return RiskOutput(
                     approved=True, 
                     adjusted_signal=TradeSignal(**target_signal_dict), 
-                    reason=result_obj.reason
+                    reason=result_obj.reason,
+                    risk_analysis=risk_analysis
                 ).model_dump(mode='json')
             else:
                 return RiskOutput(
                     approved=False, 
                     adjusted_signal=None, 
-                    reason=result_obj.reason
+                    reason=result_obj.reason,
+                    risk_analysis=risk_analysis
                 ).model_dump(mode='json')
                 
         except Exception as e:
@@ -140,5 +178,6 @@ class RiskAgent:
             return RiskOutput(
                 approved=False, 
                 adjusted_signal=None, 
-                reason=f"Error checking risk: {e}"
+                reason=f"Error checking risk: {e}",
+                risk_analysis=risk_analysis
             ).model_dump(mode='json')

@@ -9,17 +9,29 @@ import { formatCurrency, formatCompactNumber } from '../../utils/formatters';
 import { Maximize2, BarChart2, TrendingUp } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-const TradingChart = ({ data, technicals, className }) => {
-  const [timeframe, setTimeframe] = useState('1D');
+const TradingChart = ({ data, technicals, className, currency }) => {
+  const [timeframe, setTimeframe] = useState('1Y');
   const [chartType, setChartType] = useState('area');
   
+  // Filter data based on timeframe
+  const filteredData = React.useMemo(() => {
+    if (!data) return [];
+    let days = 365;
+    if (timeframe === '1M') days = 22;
+    if (timeframe === '3M') days = 66;
+    if (timeframe === '6M') days = 132;
+    
+    // Slice from the end
+    return data.slice(-days);
+  }, [data, timeframe]);
+
   // Format data for Recharts
-  const formattedData = data?.map(item => ({
+  const formattedData = filteredData.map(item => ({
     ...item,
     date: new Date(item.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
     price: Number(item.close),
     volume: Number(item.volume)
-  })) || [];
+  }));
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
@@ -29,7 +41,7 @@ const TradingChart = ({ data, technicals, className }) => {
            <p className="text-xs text-muted-foreground mb-1">{label}</p>
            <div className="space-y-0.5">
               <div className="flex items-center gap-4 justify-between">
-                <span className="text-sm font-bold text-foreground">{formatCurrency(p.price)}</span>
+                <span className="text-sm font-bold text-foreground">{formatCurrency(p.price, currency)}</span>
                 <span className={cn(
                     "text-xs font-medium",
                     p.close >= p.open ? "text-emerald-400" : "text-rose-400"
@@ -57,7 +69,7 @@ const TradingChart = ({ data, technicals, className }) => {
                     Price Action
                 </CardTitle>
                 <div className="flex bg-muted/50 rounded-lg p-1">
-                    {['1D', '1W', '1M', '1Y'].map(tf => (
+                    {['1M', '3M', '6M', '1Y'].map(tf => (
                          <button
                             key={tf}
                             onClick={() => setTimeframe(tf)}
@@ -109,8 +121,11 @@ const TradingChart = ({ data, technicals, className }) => {
                             tick={{ fontSize: 11 }}
                             tickLine={false}
                             axisLine={false}
-                            tickFormatter={(val) => `$${val}`}
-                            width={60}
+                            tickFormatter={(val) => {
+                                const locale = (currency === 'INR') ? 'en-IN' : 'en-US';
+                                return new Intl.NumberFormat(locale, { style: 'currency', currency: currency || 'USD', maximumFractionDigits: 0 }).format(val);
+                            }}
+                            width={80}
                         />
                         <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
                         

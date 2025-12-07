@@ -1,3 +1,10 @@
+import sys
+import os
+import uvicorn
+
+# Add project root to sys.path to allow imports from configs, mcp_tools, etc.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from configs.settings import settings
@@ -69,6 +76,12 @@ from backend.routers import chat
 app.include_router(agents.router, prefix=f"{settings.API_PREFIX}/agents", tags=["Agents"])
 app.include_router(chat.router, prefix=f"{settings.API_PREFIX}/chat", tags=["Chat"])
 
+from backend.routers import market_data
+app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"])
+
 @app.get("/")
 async def root():
     return {"message": "AI Stock Investor API is running"}
+
+if __name__ == "__main__":
+    uvicorn.run("server:app", host="0.0.0.0", port=settings.SERVER_PORT, reload=True)

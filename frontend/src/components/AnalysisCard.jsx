@@ -2,7 +2,7 @@ import React from 'react';
 import { Building2, ArrowUp, ArrowDown, Globe } from 'lucide-react';
 import { Card, CardContent } from './common/Card';
 import { Badge } from './common/Badge';
-import { formatCurrency, formatCompactNumber } from '../utils/formatters';
+import { formatCurrency, formatCompactNumber, formatPercent } from '../utils/formatters';
 import { cn } from '../utils/cn';
 
 // Panels
@@ -23,7 +23,11 @@ const AnalysisCard = ({ data }) => {
     sentiment_score,
     analyst_summary,
     final_signal,
-    all_signals
+    all_signals,
+    indicators,
+    market_data,
+    risk,
+    sentiment
   } = data;
 
   const isPositiveChange = (company_info?.day_change_percent || 0) >= 0;
@@ -51,13 +55,13 @@ const AnalysisCard = ({ data }) => {
         </div>
 
         <div className="text-left md:text-right">
-             <div className="text-4xl font-mono font-bold tracking-tight">{formatCurrency(company_info?.current_price)}</div>
+             <div className="text-4xl font-mono font-bold tracking-tight">{formatCurrency(company_info?.current_price, company_info?.currency)}</div>
              <div className={cn(
                  "flex items-center gap-2 text-lg font-medium justify-start md:justify-end",
                  isPositiveChange ? "text-emerald-400" : "text-rose-400"
              )}>
                  {isPositiveChange ? <ArrowUp className="w-5 h-5" /> : <ArrowDown className="w-5 h-5" />}
-                 <span>{formatCurrency(Math.abs(company_info?.day_change))}</span>
+                 <span>{formatCurrency(Math.abs(company_info?.day_change), company_info?.currency)}</span>
                  <span>({(company_info?.day_change_percent || 0).toFixed(2)}%)</span>
              </div>
         </div>
@@ -67,22 +71,27 @@ const AnalysisCard = ({ data }) => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
            {/* Chart Column (8 span) */}
            <div className="lg:col-span-8 flex flex-col gap-6">
-                <TradingChart data={price_data} technicals={technical_analysis} />
+                <TradingChart data={price_data} technicals={technical_analysis} currency={company_info?.currency} />
                 
                 {/* Fundamentals Row */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                      <MetricCard label="Market Cap" value={formatCompactNumber(company_info?.market_cap)} />
                      <MetricCard label="Volume" value={formatCompactNumber(company_info?.volume)} />
-                     <MetricCard label="52W High" value={formatCurrency(company_info?.week_52_high)} highlight="up" />
-                     <MetricCard label="52W Low" value={formatCurrency(company_info?.week_52_low)} highlight="down" />
+                     <MetricCard label="PE Ratio" value={typeof company_info?.pe_ratio === 'number' ? company_info.pe_ratio.toFixed(2) : '---'} />
+                     <MetricCard label="Revenue Growth" value={formatPercent(company_info?.revenue_growth * 100)} />
+                     
+                     <MetricCard label="52W High" value={formatCurrency(company_info?.week_52_high, company_info?.currency)} highlight="up" />
+                     <MetricCard label="52W Low" value={formatCurrency(company_info?.week_52_low, company_info?.currency)} highlight="down" />
+                     <MetricCard label="PEG Ratio" value={company_info?.peg_ratio || '---'} />
+                     <MetricCard label="Return on Equity" value={formatPercent(company_info?.return_on_equity * 100)} />
                 </div>
            </div>
 
            {/* Panels Column (4 span) */}
            <div className="lg:col-span-4 flex flex-col gap-6">
-                <SentimentPanel score={sentiment_score} summary={analyst_summary} />
-                <RiskPanel signal={final_signal} />
-                <TechnicalPanel signals={all_signals} />
+                <SentimentPanel score={sentiment?.score || sentiment_score} summary={analyst_summary} sentiment={sentiment} />
+                <RiskPanel signal={final_signal} risk={risk} currency={company_info?.currency} />
+                <TechnicalPanel signals={all_signals} indicators={indicators} currency={company_info?.currency} />
            </div>
 
            {/* 3. News & Events Row */}

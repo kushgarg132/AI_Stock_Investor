@@ -70,6 +70,7 @@ async def fetch_price_history_logic(symbol: str, period: str = "1mo", interval: 
                         high=float(row['High']),
                         low=float(row['Low']),
                         close=float(row['Close']),
+                        adj_close=float(row.get('Adj Close', row['Close'])),
                         volume=int(row.get('Volume', 0))
                     ))
                     

@@ -3,14 +3,20 @@ import { Card, CardContent } from '../common/Card';
 import { ArrowUp, ArrowDown, Activity } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-const MarketOverview = () => {
-    // Mock Data for Indices (Replace with real API later)
-    const indices = [
-        { name: 'NIFTY 50', value: 24852.15, change: 125.40, percent: 0.52 },
-        { name: 'SENSEX', value: 81234.50, change: -150.20, percent: -0.18 },
-        { name: 'BANK NIFTY', value: 52400.10, change: 320.60, percent: 0.65 },
-        { name: 'INDIA VIX', value: 12.45, change: -0.50, percent: -3.85 },
-    ];
+const MarketOverview = ({ indices, isLoading }) => {
+    if (isLoading) {
+        return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                {[1, 2, 3, 4].map(i => (
+                    <Card key={i} className="h-24 bg-muted/20 animate-pulse border-border/50">
+                        <CardContent className="p-4" />
+                    </Card>
+                ))}
+            </div>
+        );
+    }
+
+    if (!indices || indices.length === 0) return null;
 
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -19,7 +25,7 @@ const MarketOverview = () => {
                     <CardContent className="p-4 flex items-center justify-between">
                         <div>
                             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">{idx.name}</p>
-                            <p className="text-lg font-bold font-mono">{idx.value.toLocaleString()}</p>
+                            <p className="text-lg font-bold font-mono">{idx.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</p>
                         </div>
                         <div className={cn(
                             "flex flex-col items-end text-sm font-medium",
@@ -27,9 +33,9 @@ const MarketOverview = () => {
                         )}>
                             <span className="flex items-center gap-1">
                                 {idx.change >= 0 ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
-                                {Math.abs(idx.percent)}%
+                                {Math.abs(idx.percent).toFixed(2)}%
                             </span>
-                            <span className="text-xs opacity-80">{idx.change > 0 ? '+' : ''}{idx.change}</span>
+                            <span className="text-xs opacity-80">{idx.change > 0 ? '+' : ''}{idx.change.toFixed(2)}</span>
                         </div>
                     </CardContent>
                 </Card>

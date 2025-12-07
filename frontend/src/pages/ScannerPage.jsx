@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import api, { endpoints } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Card, CardContent } from '../components/common/Card';
@@ -18,7 +18,7 @@ const ScannerPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await axios.post('http://localhost:8001/api/v1/agents/scanner/bullish');
+      const response = await api.post(endpoints.scanner('bullish'));
       setResults(response.data.results);
     } catch (err) {
       console.error(err);

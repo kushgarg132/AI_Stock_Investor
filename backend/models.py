@@ -53,6 +53,7 @@ class PriceCandle(BaseModel):
     high: float
     low: float
     close: float
+    adj_close: Optional[float] = None
     volume: float
 
 class TradeSignal(BaseModel):
@@ -91,4 +92,21 @@ class CompanyInfo(BaseModel):
     dividend_yield: Optional[float] = None
     beta: Optional[float] = None
     currency: str = "USD"  # Default to USD
+
     logo_url: Optional[str] = None
+    
+    # Fundamental Data
+    peg_ratio: Optional[float] = None
+    price_to_book: Optional[float] = None
+    trailing_eps: Optional[float] = None
+    forward_eps: Optional[float] = None
+    return_on_equity: Optional[float] = None
+    return_on_assets: Optional[float] = None
+    revenue_growth: Optional[float] = None
+    total_revenue: Optional[float] = None
+    total_debt: Optional[float] = None
+    total_cash: Optional[float] = None
+    ebitda: Optional[float] = None
+    operating_margins: Optional[float] = None
+    gross_margins: Optional[float] = None
+

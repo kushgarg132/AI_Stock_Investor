@@ -3,11 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../common/Card';
 import { Gauge, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
-const SentimentPanel = ({ score, summary }) => {
+const SentimentPanel = ({ score, summary, sentiment }) => {
     // Score -1 to 1
     const getSentimentConfig = (s) => {
-        if (s >= 0.3) return { label: 'Bullish', color: 'text-emerald-400', bg: 'bg-emerald-500/20', icon: TrendingUp };
-        if (s <= -0.3) return { label: 'Bearish', color: 'text-rose-400', bg: 'bg-rose-500/20', icon: TrendingDown };
+        if (s >= 0.15) return { label: 'Bullish', color: 'text-emerald-400', bg: 'bg-emerald-500/20', icon: TrendingUp };
+        if (s <= -0.15) return { label: 'Bearish', color: 'text-rose-400', bg: 'bg-rose-500/20', icon: TrendingDown };
         return { label: 'Neutral', color: 'text-amber-400', bg: 'bg-amber-500/20', icon: Minus };
     };
 
@@ -40,7 +40,20 @@ const SentimentPanel = ({ score, summary }) => {
                      </div>
                 </div>
                 
-                <div className="text-sm text-muted-foreground leading-relaxed border-t border-border/50 pt-4">
+                {sentiment && (
+                    <div className="flex justify-between text-xs text-muted-foreground px-4">
+                        <div className="text-center">
+                            <div className="font-mono text-foreground font-bold">{sentiment?.article_count || 0}</div>
+                            <div>Articles</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="font-mono text-foreground font-bold">{sentiment?.risk_score || 0}/10</div>
+                            <div>Impact</div>
+                        </div>
+                    </div>
+                )}
+                
+                <div className="text-sm text-muted-foreground leading-relaxed border-t border-border/50 pt-4 line-clamp-4">
                     {summary}
                 </div>
             </CardContent>

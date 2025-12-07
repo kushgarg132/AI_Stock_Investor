@@ -38,18 +38,29 @@ class MasterOutput(BaseModel):
     
     # Enhanced data for UI
     company_info: Optional[Dict[str, Any]] = None
+    
+    # Sentiment
     sentiment_score: float = 0.0
     impact_score: int = 0
+    sentiment: Dict[str, Any] = {} # New structural field
+    
+    # News & Events
     news_articles: List[Dict[str, Any]] = []
     events: List[Dict[str, Any]] = []
+    
+    # Technicals
     technical_analysis: Optional[TechnicalAnalysis] = None
     all_signals: List[Dict[str, Any]] = []
     price_data: List[Dict[str, Any]] = []
+    indicators: Dict[str, Any] = {} # New field
+    market_data: Dict[str, Any] = {} # New field
+    
+    # Risk
+    risk: Dict[str, Any] = {} # New field
+    
     agent_confidence: float = 0.0
     logs: List[str] = []
     peers: List[str] = []
-
-
 class AgentState(TypedDict):
     symbol: str
     account_size: float
@@ -211,6 +222,7 @@ class MasterAgent:
             company_info=result.get('company_info'),
             sentiment_score=analyst_out['sentiment_score'],
             impact_score=analyst_out['impact_score'],
+            sentiment=analyst_out.get('sentiment_analysis', {}),
             news_articles=analyst_out['news_articles'],
             events=analyst_out['events'],
             technical_analysis=TechnicalAnalysis(
@@ -220,6 +232,9 @@ class MasterAgent:
             ),
             all_signals=quant_out['signals'],
             price_data=quant_out['price_candles'],
+            indicators=quant_out.get('indicators', {}),
+            market_data=quant_out.get('market_data', {}),
+            risk=result.get('risk_output', {}).get('risk_analysis', {}),
             agent_confidence=0.8,
             logs=[m.content for m in result['messages']],
             peers=result.get('peers', [])

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api, { endpoints } from '../utils/api';
 import { useLocation } from 'react-router-dom';
 import Layout from './Layout';
 import SmartSearch from './dashboard/SmartSearch';
@@ -14,15 +14,42 @@ const Dashboard = () => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Market Data State
+  const [marketData, setMarketData] = useState({ indices: [], trending: [] });
+  const [marketLoading, setMarketLoading] = useState(true);
+
   const location = useLocation();
 
   useEffect(() => {
+    // Check for passed state from other pages
     if (location.state?.symbol) {
       handleSearch(location.state.symbol);
-      // Clear state so it doesn't re-run on refresh
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
+
+  // Fetch Market Data on Mount
+  useEffect(() => {
+      const fetchMarketData = async () => {
+          try {
+              const [indicesRes, trendingRes] = await Promise.all([
+                  api.get(endpoints.marketIndices),
+                  api.get(endpoints.trendingStocks)
+              ]);
+              setMarketData({
+                  indices: indicesRes.data,
+                  trending: trendingRes.data
+              });
+          } catch (e) {
+              console.error("Failed to fetch market data:", e);
+          } finally {
+              setMarketLoading(false);
+          }
+      };
+      
+      fetchMarketData();
+  }, []);
 
   const handleSearch = async (symbol) => {
     setLoading(true);
@@ -30,7 +57,7 @@ const Dashboard = () => {
     setData(null);
 
     try {
-      const response = await axios.post(`http://localhost:8001/api/v1/agents/analyze/${symbol}`);
+      const response = await api.post(endpoints.analyze(symbol));
       setData(response.data);
     } catch (err) {
       console.error(err);
@@ -67,7 +94,7 @@ const Dashboard = () => {
                 </div>
 
                 <div className="pt-8 space-y-8">
-                     <MarketOverview />
+                     <MarketOverview indices={marketData.indices} isLoading={marketLoading} />
                      
                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="md:col-span-2">
@@ -77,7 +104,11 @@ const Dashboard = () => {
                             </div>
                         </div>
                         <div className="space-y-6">
-                             <TrendingStocks />
+                             <TrendingStocks 
+                                stocks={marketData.trending} 
+                                isLoading={marketLoading}
+                                onStockClick={handleSearch} 
+                             />
                              <WatchlistWidget />
                         </div>
                      </div>

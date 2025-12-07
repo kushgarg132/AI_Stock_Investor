@@ -104,7 +104,23 @@ async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
                     f"https://logo.clearbit.com/{info['website'].replace('https://', '').replace('http://', '').replace('www.', '').strip('/').split('/')[0]}" 
                     if info.get('website') else 
                     f"https://logo.clearbit.com/{symbol.lower()}.com" # Last resort fallback
-                )
+                ),
+                
+                # Extended Fundamentals
+                peg_ratio=info.get('pegRatio'),
+                price_to_book=info.get('priceToBook'),
+                trailing_eps=info.get('trailingEps'),
+                forward_eps=info.get('forwardEps'),
+                return_on_equity=info.get('returnOnEquity'),
+                return_on_assets=info.get('returnOnAssets'),
+                revenue_growth=info.get('revenueGrowth'),
+                total_revenue=info.get('totalRevenue'),
+                total_debt=info.get('totalDebt'),
+                total_cash=info.get('totalCash'),
+                ebitda=info.get('ebitda'),
+                operating_margins=info.get('operatingMargins'),
+                gross_margins=info.get('grossMargins')
+
             )
             
             logger.info(f"Stock info fetch complete for {try_symbol}: {company_info.name}")

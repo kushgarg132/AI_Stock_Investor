@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Bot, User, Loader2, Sparkles, Minimize2, Maximize2 } from 'lucide-react';
-import axios from 'axios';
+import api from '../utils/api';
 import { clsx } from 'clsx';
 
 const ChatWidget = () => {
@@ -34,7 +34,7 @@ const ChatWidget = () => {
       // Build history for context (last 10 messages)
       const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
       
-      const response = await axios.post('http://localhost:8001/api/v1/chat/message', {
+      const response = await api.post('/chat/message', {
         message: userMsg,
         history: history
       });
