@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, BackgroundTasks
-from backend.models import Watchlist
+from backend.components.shared.models import Watchlist
 from backend.database import db
 from datetime import datetime
 from typing import List, Dict, Any
-from backend.mcp_tools.stock_info_fetcher import fetch_stock_info_logic
+from backend.components.master.stock_info import fetch_stock_info_logic
 
 router = APIRouter(prefix="/watchlist", tags=["Watchlist"])
 

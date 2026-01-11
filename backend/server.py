@@ -6,6 +6,7 @@ import uvicorn
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend.configs.settings import settings
 from backend.configs.logging_config import setup_logging
@@ -13,19 +14,12 @@ from backend.database import db
 
 # Setup Logging
 logger = setup_logging()
-from backend.mcp_tools import (
-    news_fetcher,
-    news_sentiment,
-    event_classifier,
-    price_history_fetcher,
-    support_resistance_detector,
-    trend_detector,
-    volume_spike_detector,
-    risk_rules_tool,
-    stock_info_fetcher,
-    goals_api,
-    stock_scanner
-)
+from backend.components.analyst import news, sentiment, events
+from backend.components.quant import price, trend, support, volume, strategies
+from backend.components.risk import risk
+from backend.components.master import stock_info
+from backend.mcp_tools import stock_scanner
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -59,16 +53,15 @@ async def shutdown_db_client():
     logger.info("Database disconnected.")
 
 # Include Routers
-app.include_router(news_fetcher.router, prefix=settings.API_PREFIX, tags=["News"])
-app.include_router(news_sentiment.router, prefix=settings.API_PREFIX, tags=["News"])
-app.include_router(event_classifier.router, prefix=settings.API_PREFIX, tags=["Events"])
-app.include_router(price_history_fetcher.router, prefix=settings.API_PREFIX, tags=["Market Data"])
-app.include_router(support_resistance_detector.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
-app.include_router(trend_detector.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
-app.include_router(volume_spike_detector.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
-app.include_router(risk_rules_tool.router, prefix=settings.API_PREFIX, tags=["Risk"])
-app.include_router(stock_info_fetcher.router, prefix=settings.API_PREFIX, tags=["Market Data"])
-app.include_router(goals_api.router, prefix=settings.API_PREFIX, tags=["Goals"])
+app.include_router(news.router, prefix=settings.API_PREFIX, tags=["News"])
+app.include_router(sentiment.router, prefix=settings.API_PREFIX, tags=["News"])
+app.include_router(events.router, prefix=settings.API_PREFIX, tags=["Events"])
+app.include_router(price.router, prefix=settings.API_PREFIX, tags=["Market Data"])
+app.include_router(support.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
+app.include_router(trend.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
+app.include_router(volume.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
+app.include_router(risk.router, prefix=settings.API_PREFIX, tags=["Risk"])
+app.include_router(stock_info.router, prefix=settings.API_PREFIX, tags=["Market Data"])
 app.include_router(stock_scanner.router, prefix=settings.API_PREFIX, tags=["Scanner"])
 
 # Agents Router
@@ -86,6 +79,14 @@ from backend.routers import watchlist
 
 app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"])
 app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"])
+
+@app.get("/docs", include_in_schema=False)
+async def redirect_docs():
+    return RedirectResponse(url=f"{settings.API_PREFIX}/docs")
+
+@app.get("/redoc", include_in_schema=False)
+async def redirect_redoc():
+    return RedirectResponse(url=f"{settings.API_PREFIX}/redoc")
 
 @app.head("/")
 @app.get("/")

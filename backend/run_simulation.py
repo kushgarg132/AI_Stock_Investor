@@ -8,7 +8,7 @@ sys.path.append(os.getcwd())
 
 from backend.configs.logging_config import setup_logging
 from backend.agents.master_agent import MasterAgent
-from backend.models import SignalType
+from backend.components.shared.models import SignalType
 
 # Initialize logging
 logger = setup_logging()

@@ -4,7 +4,7 @@ from typing import Optional
 import logging
 
 import yfinance as yf
-from backend.models import CompanyInfo
+from backend.components.shared.models import CompanyInfo
 
 logger = logging.getLogger(__name__)
 

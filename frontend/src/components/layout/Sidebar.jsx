@@ -3,7 +3,6 @@ import { NavLink } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   ScanLine, 
-  Target, 
  
   Settings, 
   Wallet,
@@ -19,7 +18,6 @@ const Sidebar = ({ isOpen, onClose }) => {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: ScanLine, label: 'Scanner', path: '/scanner' },
-    { icon: Target, label: 'Goals', path: '/goals' },
     { icon: Network, label: 'System', path: '/system' },
     { icon: BookMarked, label: 'Watchlist', path: '/watchlist' }, // Placeholder
     { icon: Wallet, label: 'Portfolio', path: '/portfolio' }, // Placeholder
