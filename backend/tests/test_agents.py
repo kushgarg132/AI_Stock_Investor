@@ -116,4 +116,7 @@ async def test_master_agent_run(mock_db):
                     output = await agent.run("AAPL", account_size=1000)
                     
                     assert output.decision == SignalType.BUY
-                    assert output.reasoning == "Safe | LLM: Buy it."
+                    assert output.decision == SignalType.BUY
+                    # Match the new Synthesis + Risk format
+                    assert "**Thesis**: Buy it." in output.reasoning
+                    assert "**Risk Decision**: Safe" in output.reasoning

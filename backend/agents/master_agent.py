@@ -98,17 +98,25 @@ class MasterAgent:
         workflow.add_node("analyst", self.analyst_node)
         workflow.add_node("quant", self.quant_node)
         workflow.add_node("company_info", self.company_info_node)
+        workflow.add_node("synthesize_node", self.synthesize_node) # New Node
         workflow.add_node("risk_assessment", self.risk_node)
         workflow.add_node("decision_maker", self.decision_node)
         
-        # Define Edges (Sequential Flow to ensure all data is ready)
+        # Define Edges (Parallel Flow)
         workflow.set_entry_point("resolve_query")
         
         workflow.add_edge("resolve_query", "start_analysis")
         workflow.add_edge("start_analysis", "company_info")
+        
+        # Fan-out: Run Analyst and Quant in parallel
         workflow.add_edge("company_info", "analyst")
-        workflow.add_edge("analyst", "quant")
-        workflow.add_edge("quant", "risk_assessment")
+        workflow.add_edge("company_info", "quant")
+        
+        # Fan-in: Both feed into Synthesis
+        workflow.add_edge("analyst", "synthesize_node")
+        workflow.add_edge("quant", "synthesize_node")
+        
+        workflow.add_edge("synthesize_node", "risk_assessment")
         workflow.add_edge("risk_assessment", "decision_maker")
         workflow.add_edge("decision_maker", END)
         
@@ -161,6 +169,39 @@ class MasterAgent:
             logger.warning(f"Failed to fetch company info: {e}")
             return {"company_info": None}
 
+    async def synthesize_node(self, state: AgentState):
+        """Merged insights from Analyst (Fundamental) and Quant (Technical)"""
+        logger.info("Synthesizing insights...")
+        
+        analyst_out = state.get("analyst_output", {})
+        quant_out = state.get("quant_output", {})
+        
+        summary_prompt = f"""
+        Act as a Portfolio Manager. Synthesize the following reports into a cohesive investment thesis for {state['symbol']}.
+        
+        [Fundamental Report]
+        Sentiment: {analyst_out.get('sentiment_score', 0)}
+        Summary: {analyst_out.get('summary', 'N/A')}
+        
+        [Technical Report]
+        Trend: {quant_out.get('trend', 'N/A')}
+        Signals: {[s.get('signal') for s in quant_out.get('signals', [])]}
+        
+        Task:
+        1. Weigh the evidence. Do fundamentals match technicals?
+        2. Identify the biggest opportunity and the biggest risk.
+        3. Conclude with a clear narrative.
+        
+        Output a concise paragraph.
+        """
+        
+        try:
+            synthesis = await llm_service.get_completion(summary_prompt)
+        except Exception:
+            synthesis = "Synthesis failed."
+            
+        return {"reasoning": synthesis}
+
     async def risk_node(self, state: AgentState):
         # Risk Agent now orchestrates Sentiment Check + Risk Check
         result = await self.risk.evaluate(state)
@@ -171,40 +212,28 @@ class MasterAgent:
         risk_out = state.get("risk_output")
         analyst_out = state.get("analyst_output")
         quant_out = state.get("quant_output")
-        company = state.get("company_info")
+        current_reasoning = state.get("reasoning", "")
         
         if not risk_out or not analyst_out or not quant_out:
-             # Should not happen if graph flows correctly
              return {"decision": SignalType.HOLD, "reasoning": "Incomplete analysis"}
         
-        # LLM Flavor text
-        reasoning = risk_out.get('reason', "No decision made")
+        # Merge Risk reasoning with Synthesis
+        risk_reason = risk_out.get('reason', "No decision made")
         decision = risk_out.get('approved') and risk_out.get('adjusted_signal', {}).get('signal') or SignalType.HOLD
         
-        if decision != SignalType.HOLD:
-             final_prompt = f"Review trade: {state['symbol']} {decision}. Reason: {reasoning}. Analyst: {analyst_out.get('summary')}. One sentence comment."
-             llm_comment = await llm_service.get_completion(final_prompt)
-             reasoning += f" | LLM: {llm_comment}"
+        final_reasoning = f"**Thesis**: {current_reasoning}\n\n**Risk Decision**: {risk_reason}"
 
-        tech_data = TechnicalAnalysis(
-            trend=quant_out['trend'],
-            nearest_support=quant_out['nearest_support'],
-            nearest_resistance=quant_out['nearest_resistance']
-        )
-        
-        # Construct output dicts
-        
         # Save to memory
         await memory_manager.add_memory(
             symbol=state['symbol'],
-            content=reasoning,
+            content=final_reasoning,
             decision=decision,
             memory_type="full_analysis"
         )
         
         return {
             "decision": decision,
-            "reasoning": reasoning,
+            "reasoning": final_reasoning,
             "final_signal": risk_out.get('adjusted_signal'),
             "messages": [HumanMessage(content="Decision Made")]
         }

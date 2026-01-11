@@ -83,6 +83,10 @@ class QuantAgent:
             if signal:
                 signals.append(signal)
         
+        # Sort by confidence (descending) and take top 3
+        signals.sort(key=lambda x: x.agent_confidence, reverse=True)
+        signals = signals[:3]
+        
         logger.info(f"QuantAgent: Analysis complete for {symbol}. Signals: {len(signals)}")
         
         # Determine candles to return

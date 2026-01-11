@@ -67,37 +67,53 @@ class RiskAgent:
             logger.warning(f"RiskAgent: Failed to calculate volatility: {e}")
 
         best_signal = None
+        best_score = -1.0
         reasoning = "No actionable signals generated."
         
-        # Logic: Take the first valid signal that aligns with sentiment
+        # Logic: Score trades based on (Technical Confidence * 0.6) + (Sentiment Alignment * 0.4)
         target_signal_dict = None
         
         for sig_dict in signals:
             signal_type = sig_dict['signal']
+            confidence = sig_dict.get('agent_confidence', 0.5)
             
-            # Sentiment Check
-            if signal_type == "BUY" and sentiment_score < -0.2:
-                logger.info(f"Quant BUY rejected due to negative sentiment ({sentiment_score:.2f})")
-                continue
-            if signal_type == "SELL" and sentiment_score > 0.2:
-                logger.info(f"Quant SELL rejected due to positive sentiment ({sentiment_score:.2f})")
-                continue
+            # 1. Alignment Score (-1.0 to 1.0)
+            # If BUY, we want positive sentiment. If SELL, negative.
+            if signal_type == "BUY":
+                alignment = sentiment_score
+            else:
+                alignment = -sentiment_score
+                
+            # 2. Weighted Score
+            # specific strategy confidence is 0-1
+            # alignment is -1 to 1. 
+            # We want a threshold. e.g. composite > 0.3
             
-            # Found a candidate
-            target_signal_dict = sig_dict
-            break
+            final_score = (confidence * 0.6) + (alignment * 0.4)
+            
+            logger.info(f"Risk Evaluation for {signal_type}: Conf={confidence}, Sent={sentiment_score}, Score={final_score:.2f}")
+            
+            if final_score > 0.25: # Dynamic Threshold
+                if final_score > best_score:
+                    best_score = final_score
+                    target_signal_dict = sig_dict
+                    reasoning = (
+                        f"Approved {signal_type}: Technical confidence ({confidence:.2f}) supported by "
+                        f"{'positive' if alignment > 0 else 'neutral/negative'} sentiment. Score: {final_score:.2f}."
+                    )
             
         risk_analysis = {
             "volatility_score": float(f"{volatility_score:.4f}"),
             "risk_level": risk_level,
-            "max_drawdown": 0.0 # Placeholder or calculate from history
+            "max_drawdown": 0.0,
+            "trade_score": float(f"{best_score:.2f}") if target_signal_dict else 0.0
         }
 
         if not target_signal_dict:
              return RiskOutput(
                  approved=False, 
                  adjusted_signal=None, 
-                 reason="All signals rejected by sentiment or no signals found",
+                 reason=f"Signals rejected. Best score {best_score:.2f} (Threshold 0.25). Sentiment: {sentiment_score:.2f}",
                  risk_analysis=risk_analysis
              ).model_dump(mode='json')
              

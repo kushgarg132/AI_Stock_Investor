@@ -71,18 +71,32 @@ class AnalystAgent:
         except Exception as e:
             logger.error(f"AnalystAgent Error classifying events: {e}")
 
-            # 4. Synthesize Summary using LLM
-        # 4. Synthesize Summary using LLM
+        # 4. Synthesize Summary using LLM with Chain of Thought
         summary_prompt = f"""
-        Synthesize a brief market sentiment summary for {symbol} based on these news articles:
-        {combined_text[:2000]}
-        
-        Events detected: {events}
-        
-        Return a concise paragraph.
+        You are a senior financial analyst. Analyze the following news for {symbol} and provide a structured market sentiment report.
+
+        News Articles:
+        {combined_text[:3000]}
+
+        Events:
+        {events}
+
+        Instructions:
+        1. **Market Sentiment**: Analyze the overall mood (Bullish/Bearish/Neutral) and explain WHY.
+        2. **Key Drivers**: Identify the specific factors driving this sentiment (e.g., earnings, product launches, macro factors).
+        3. **Risks**: Highlight any potential downsides or contrarian indicators.
+        4. **Verdict**: A single concise sentence summarizing the outlook.
+
+        Output Format:
+        Provide the response in clear Markdown paragraphs. Do not use JSON.
         """
-        summary = await llm_service.get_completion(summary_prompt, system_prompt="You are a financial analyst.")
         
+        try:
+            summary = await llm_service.get_completion(summary_prompt, system_prompt="You are a senior hedge fund analyst.")
+        except Exception as e:
+            logger.error(f"AnalystAgent LLM Error: {e}")
+            summary = "Unable to generate summary due to LLM error."
+
         # Calculate aggregate scores
         avg_sentiment = sum(a.get('sentiment_score', 0) for a in analyzed_articles) / len(analyzed_articles) if analyzed_articles else 0
         max_impact = max([a.get('impact_score', 0) for a in analyzed_articles] + [0])
