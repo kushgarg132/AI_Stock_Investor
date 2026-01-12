@@ -3,7 +3,7 @@ import operator
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 from backend.llm import llm_service
-# from backend.agents.tools import fetch_news_tool, fetch_stock_info_tool, fetch_price_history_tool, resolve_symbol_tool
+from backend.agents.tools import fetch_news_tool, fetch_stock_info_tool, fetch_price_history_tool, resolve_symbol_tool
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class ChatAgent:
             self.agent = None
             return
 
-        self.tools = [] # [fetch_news_tool, fetch_stock_info_tool, fetch_price_history_tool, resolve_symbol_tool]
+        self.tools = [fetch_news_tool, fetch_stock_info_tool, fetch_price_history_tool, resolve_symbol_tool]
         
         # Use LangGraph's prebuilt ReAct agent for simplicity and robustness
         if self.tools:
