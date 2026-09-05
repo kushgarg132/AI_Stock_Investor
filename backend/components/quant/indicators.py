@@ -1,18 +1,21 @@
 import pandas as pd
 import numpy as np
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 class Indicators:
     @staticmethod
     def rsi(series: pd.Series, period: int = 14) -> pd.Series:
-        """Relative Strength Index"""
+        """Relative Strength Index (Wilder's smoothing)"""
         delta = series.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        
-        rs = gain / loss
+        gain = delta.where(delta > 0, 0.0)
+        loss = -delta.where(delta < 0, 0.0)
+        avg_gain = gain.ewm(alpha=1 / period, adjust=False).mean()
+        avg_loss = loss.ewm(alpha=1 / period, adjust=False).mean()
+
+        rs = avg_gain / avg_loss
         return 100 - (100 / (1 + rs))
 
     @staticmethod
@@ -35,10 +38,32 @@ class Indicators:
         return tr.rolling(window=period).mean()
 
     @staticmethod
-    def vwap(high: pd.Series, low: pd.Series, close: pd.Series, volume: pd.Series) -> pd.Series:
-        """Volume Weighted Average Price"""
+    def vwap(
+        high: pd.Series,
+        low: pd.Series,
+        close: pd.Series,
+        volume: pd.Series,
+        session: Optional[pd.Series] = None,
+    ) -> pd.Series:
+        """Volume Weighted Average Price, accumulated within each session.
+
+        VWAP is only meaningful relative to a session start. `session` supplies the
+        grouping key (normally the trading date); without it the accumulation would
+        run across the entire series and the result would not be a VWAP at all.
+        """
         typical_price = (high + low + close) / 3
-        return (typical_price * volume).cumsum() / volume.cumsum()
+        pv = typical_price * volume
+
+        if session is None:
+            index = close.index
+            if isinstance(index, pd.DatetimeIndex):
+                session = pd.Series(index.normalize(), index=index)
+            else:
+                # Non-datetime index carries no session boundary, so a single
+                # cumulative window is the only defined answer.
+                return pv.cumsum() / volume.cumsum()
+
+        return pv.groupby(session).cumsum() / volume.groupby(session).cumsum()
 
     @staticmethod
     def bollinger_bands(series: pd.Series, period: int = 20, std_dev: int = 2):
@@ -73,7 +98,10 @@ class Indicators:
         df['sma_200'] = Indicators.sma(df['close'], 200)
         df['ema_9'] = Indicators.ema(df['close'], 9)
         df['atr_14'] = Indicators.atr(df['high'], df['low'], df['close'])
-        df['vwap'] = Indicators.vwap(df['high'], df['low'], df['close'], df['volume'])
+        session = None
+        if 'timestamp' in df.columns:
+            session = pd.to_datetime(df['timestamp']).dt.normalize()
+        df['vwap'] = Indicators.vwap(df['high'], df['low'], df['close'], df['volume'], session)
         
         upper, lower = Indicators.bollinger_bands(df['close'])
         df['bb_upper'] = upper
