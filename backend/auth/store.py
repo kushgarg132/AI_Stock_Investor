@@ -20,7 +20,17 @@ class UserStore:
     added, audit its field set against upsert_from_google explicitly."""
 
     def __init__(self, db):
-        self.collection = db["users"]
+        # Deferred: db["users"] isn't accessed until a method actually
+        # needs it. FastAPI resolves every Depends() in a route's
+        # signature before the route body runs, so constructing a
+        # UserStore happens even on requests that will fail before ever
+        # using the store (e.g. an invalid Google token) -- eager access
+        # here would crash on an unconnected db in that case.
+        self._db = db
+
+    @property
+    def collection(self):
+        return self._db["users"]
 
     async def ensure_indexes(self):
         await self.collection.create_index("google_sub", unique=True)

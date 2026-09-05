@@ -5,9 +5,10 @@ import uvicorn
 # Add project root to sys.path to allow imports from configs, mcp_tools, etc.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from backend.auth.dependency import get_current_user
 from backend.configs.settings import settings
 from backend.configs.logging_config import setup_logging
 from backend.database import db
@@ -60,34 +61,34 @@ async def shutdown_db_client():
     logger.info("Database disconnected.")
 
 # Include Routers
-app.include_router(news.router, prefix=settings.API_PREFIX, tags=["News"])
-app.include_router(sentiment.router, prefix=settings.API_PREFIX, tags=["News"])
-app.include_router(events.router, prefix=settings.API_PREFIX, tags=["Events"])
-app.include_router(price.router, prefix=settings.API_PREFIX, tags=["Market Data"])
-app.include_router(support.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
-app.include_router(trend.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
-app.include_router(volume.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"])
-app.include_router(risk.router, prefix=settings.API_PREFIX, tags=["Risk"])
-app.include_router(stock_info.router, prefix=settings.API_PREFIX, tags=["Market Data"])
-app.include_router(stock_scanner.router, prefix=settings.API_PREFIX, tags=["Scanner"])
+app.include_router(news.router, prefix=settings.API_PREFIX, tags=["News"], dependencies=[Depends(get_current_user)])
+app.include_router(sentiment.router, prefix=settings.API_PREFIX, tags=["News"], dependencies=[Depends(get_current_user)])
+app.include_router(events.router, prefix=settings.API_PREFIX, tags=["Events"], dependencies=[Depends(get_current_user)])
+app.include_router(price.router, prefix=settings.API_PREFIX, tags=["Market Data"], dependencies=[Depends(get_current_user)])
+app.include_router(support.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"], dependencies=[Depends(get_current_user)])
+app.include_router(trend.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"], dependencies=[Depends(get_current_user)])
+app.include_router(volume.router, prefix=settings.API_PREFIX, tags=["Technical Analysis"], dependencies=[Depends(get_current_user)])
+app.include_router(risk.router, prefix=settings.API_PREFIX, tags=["Risk"], dependencies=[Depends(get_current_user)])
+app.include_router(stock_info.router, prefix=settings.API_PREFIX, tags=["Market Data"], dependencies=[Depends(get_current_user)])
+app.include_router(stock_scanner.router, prefix=settings.API_PREFIX, tags=["Scanner"], dependencies=[Depends(get_current_user)])
 
 # Agents Router
 from backend.routers import agents
 from backend.routers import chat
 
-app.include_router(agents.router, prefix=f"{settings.API_PREFIX}/agents", tags=["Agents"])
-app.include_router(chat.router, prefix=f"{settings.API_PREFIX}/chat", tags=["Chat"])
+app.include_router(agents.router, prefix=f"{settings.API_PREFIX}/agents", tags=["Agents"], dependencies=[Depends(get_current_user)])
+app.include_router(chat.router, prefix=f"{settings.API_PREFIX}/chat", tags=["Chat"], dependencies=[Depends(get_current_user)])
 
 from backend.routers import settings as settings_router
-app.include_router(settings_router.router, prefix=settings.API_PREFIX, tags=["Settings"])
+app.include_router(settings_router.router, prefix=settings.API_PREFIX, tags=["Settings"], dependencies=[Depends(get_current_user)])
 
 from backend.routers import market_data
 from backend.routers import watchlist
 from backend.routers import trading
 
-app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"])
-app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"])
-app.include_router(trading.router, prefix=settings.API_PREFIX, tags=["Trading"])
+app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"], dependencies=[Depends(get_current_user)])
+app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"], dependencies=[Depends(get_current_user)])
+app.include_router(trading.router, prefix=settings.API_PREFIX, tags=["Trading"], dependencies=[Depends(get_current_user)])
 
 @app.get("/docs", include_in_schema=False)
 async def redirect_docs():
