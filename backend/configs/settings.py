@@ -25,9 +25,6 @@ class Settings(BaseSettings):
     OMNIROUTE_BASE_URL: str = "http://omniroute:20128/v1"
     OMNIROUTE_MODEL: str = "antigravity/gemini-2.5-flash"
 
-    NEWS_API_KEY: Optional[str] = None
-    ALPHA_VANTAGE_API_KEY: Optional[str] = None
-    FMP_API_KEY: Optional[str] = None
     FINNHUB_API_KEY: Optional[str] = None
 
     @field_validator("GEMINI_API_KEYS", mode="before")
