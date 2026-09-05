@@ -32,7 +32,15 @@ export const endpoints = {
     details: (userId) => `/watchlist/${userId}/details`,
   },
   globalIndices: '/market/global',
-  marketNews: '/news/market'
+  marketNews: '/news/market',
+  trading: {
+    start: '/trading/start',
+    stop: '/trading/stop',
+    positions: '/trading/positions',
+    fills: '/trading/fills',
+    equity: '/trading/equity',
+    instruments: (q) => `/trading/instruments?q=${encodeURIComponent(q)}`,
+  },
 };
 
 export default api;

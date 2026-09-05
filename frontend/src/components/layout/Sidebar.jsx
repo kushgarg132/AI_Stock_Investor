@@ -1,10 +1,10 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  ScanLine, 
- 
-  Settings, 
+import {
+  LayoutDashboard,
+  ScanLine,
+  LineChart,
+  Settings,
   Wallet,
   BookMarked,
 
@@ -18,10 +18,11 @@ const Sidebar = ({ isOpen, onClose }) => {
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: ScanLine, label: 'Scanner', path: '/scanner' },
+    { icon: LineChart, label: 'Trading', path: '/trading' },
     { icon: Network, label: 'System', path: '/system' },
-    { icon: BookMarked, label: 'Watchlist', path: '/watchlist' }, // Placeholder
+    { icon: BookMarked, label: 'Watchlist', path: '/watchlist' },
     { icon: Wallet, label: 'Portfolio', path: '/portfolio' }, // Placeholder
-    { icon: Settings, label: 'Settings', path: '/settings' }, // Placeholder
+    { icon: Settings, label: 'Settings', path: '/settings' },
   ];
 
   return (
