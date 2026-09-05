@@ -73,8 +73,12 @@ class BacktestResult(BaseModel):
 
 class TradeSignal(BaseModel):
     """Represents a single actionable trade signal"""
-    model_config = ConfigDict(use_enum_values=True)
-    
+    # extra="forbid": a mismatched keyword must raise at construction rather than be
+    # dropped silently. Strategies previously passed reasoning/agent_confidence/
+    # source_agent, none of which were declared, so conviction stayed 0.0 and the
+    # downstream risk scorer always fell back to a hardcoded 0.5.
+    model_config = ConfigDict(use_enum_values=True, extra="forbid")
+
     symbol: str
     signal: SignalType
     conviction: float = 0.0 # 0.0 to 1.0
@@ -84,6 +88,8 @@ class TradeSignal(BaseModel):
     position_size: Optional[float] = 0.0
     timeframe: Optional[str] = None
     reason: Optional[str] = None
+    source: Optional[str] = None
+    timestamp: Optional[datetime] = None
 
 
 class CompanyInfo(BaseModel):

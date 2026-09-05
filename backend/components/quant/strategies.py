@@ -45,9 +45,9 @@ class TechnicalBreakout(Strategy):
                     entry_price=current_price,
                     stop_loss=resistance * 0.98, # Stop below the breakout level
                     target_price=current_price + (current_price - resistance) * 2, # 2R target
-                    reasoning=f"Breakout above resistance {resistance:.2f} with volume surge",
-                    agent_confidence=0.8,
-                    source_agent="QuantAgent"
+                    reason=f"Breakout above resistance {resistance:.2f} with volume surge",
+                    conviction=0.8,
+                    source="QuantAgent"
                 )
         return None
 
@@ -73,9 +73,9 @@ class MeanReversion(Strategy):
                 entry_price=current_price,
                 stop_loss=current_price * 0.95,
                 target_price=df['sma_20'].iloc[-1] if 'sma_20' in df.columns else current_price * 1.05,
-                reasoning=f"Oversold: RSI {rsi:.2f} and Price below Lower BB",
-                agent_confidence=0.7,
-                source_agent="QuantAgent"
+                reason=f"Oversold: RSI {rsi:.2f} and Price below Lower BB",
+                conviction=0.7,
+                source="QuantAgent"
             )
         return None
 
@@ -105,9 +105,9 @@ class VolumeSurge(Strategy):
                 entry_price=current_price,
                 stop_loss=current_price * 0.98 if signal == SignalType.BUY else current_price * 1.02,
                 target_price=current_price * 1.05 if signal == SignalType.BUY else current_price * 0.95,
-                reasoning=f"{reason}: {current_vol:.0f} vs Avg {avg_vol:.0f}",
-                agent_confidence=0.6, # Lower confidence as it's just volume
-                source_agent="QuantAgent"
+                reason=f"{reason}: {current_vol:.0f} vs Avg {avg_vol:.0f}",
+                conviction=0.6, # Lower confidence as it's just volume
+                source="QuantAgent"
             )
         return None
 
@@ -135,9 +135,9 @@ class MACDCrossover(Strategy):
                 entry_price=current_price,
                 stop_loss=current_price * 0.97,
                 target_price=current_price * 1.06,
-                reasoning=f"MACD Bullish Crossover",
-                agent_confidence=0.75,
-                source_agent="QuantAgent"
+                reason=f"MACD Bullish Crossover",
+                conviction=0.75,
+                source="QuantAgent"
             )
             
         # Bearish Crossover (Histogram flips from positive to negative)
@@ -149,9 +149,9 @@ class MACDCrossover(Strategy):
                 entry_price=current_price,
                 stop_loss=current_price * 1.03,
                 target_price=current_price * 0.94,
-                reasoning=f"MACD Bearish Crossover",
-                agent_confidence=0.75,
-                source_agent="QuantAgent"
+                reason=f"MACD Bearish Crossover",
+                conviction=0.75,
+                source="QuantAgent"
             )
             
         return None

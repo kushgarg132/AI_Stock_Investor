@@ -1,7 +1,7 @@
 # import httpx - removed
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, ConfigDict
-from backend.components.shared.models import TradeSignal
+from backend.components.shared.models import TradeSignal, SignalType
 from backend.configs.settings import settings
 import logging
 from backend.components.risk.risk import check_risk_logic
@@ -75,11 +75,14 @@ class RiskAgent:
         
         for sig_dict in signals:
             signal_type = sig_dict['signal']
-            confidence = sig_dict.get('agent_confidence', 0.5)
+            confidence = sig_dict.get('conviction', 0.5)
             
             # 1. Alignment Score (-1.0 to 1.0)
             # If BUY, we want positive sentiment. If SELL, negative.
-            if signal_type == "BUY":
+            # Compare against the enum's value, not "BUY": use_enum_values=True
+            # serialises SignalType.BUY as "buy", so an uppercase literal never
+            # matched and every BUY was scored against inverted sentiment.
+            if signal_type == SignalType.BUY.value:
                 alignment = sentiment_score
             else:
                 alignment = -sentiment_score
@@ -145,7 +148,7 @@ class RiskAgent:
                         dist = abs(entry_price - stop_loss)
                         if dist < current_atr:
                             logger.info(f"RiskAgent: Stop Loss too tight ({dist:.2f} < ATR {current_atr:.2f}). Adjusting to 1.5 ATR.")
-                            if target_signal_dict['signal'] == 'BUY':
+                            if target_signal_dict['signal'] == SignalType.BUY.value:
                                 stop_loss = entry_price - (1.5 * current_atr)
                             else:
                                 stop_loss = entry_price + (1.5 * current_atr)
