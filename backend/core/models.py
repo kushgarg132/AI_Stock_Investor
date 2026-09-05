@@ -79,6 +79,12 @@ class Order(BaseModel):
     order_type: Literal["MARKET", "LIMIT"]
     limit_price: Optional[float] = None
     status: Literal["PENDING", "FILLED", "CANCELLED", "REJECTED"] = "PENDING"
+    # CNC (delivery) vs MIS (intraday, margin) -- Task 6's Indian cost model
+    # (backend/engine/execution/costs.py) selects STT/brokerage rates by
+    # this field. Defaults to MIS since that's what an intraday-mode
+    # strategy's forced square-off order always is; size_intents (Task 6)
+    # sets it explicitly per order from the owning strategy's spec.mode.
+    product: Literal["CNC", "MIS"] = "MIS"
 
 
 class Fill(BaseModel):

@@ -1,6 +1,7 @@
 """ExecutionClient that fills MARKET orders immediately at the current bar's
-close. No slippage/cost modeling yet -- Task 6 owns the realistic Indian
-cost model; `costs` is always 0.0 here.
+close. Costs are computed via the real Indian brokerage/tax model
+(backend/engine/execution/costs.py), selected by the order's CNC/MIS
+`product`.
 
 This same class is meant to serve both backtest AND paper trading (per the
 rework's plan: one execution path, different data feed). Do not fork a
@@ -10,6 +11,7 @@ second "paper" implementation.
 from typing import AsyncIterator
 
 from backend.core.models import Bar, Fill, Order, Position
+from backend.engine.execution.costs import calculate_indian_costs
 
 
 class SimulatedExecutionClient:
@@ -37,6 +39,7 @@ class SimulatedExecutionClient:
                 f"No current bar known for {order.symbol!r}; on_bar() must run before submit()"
             )
 
+        costs = calculate_indian_costs(price, order.quantity, order.side, order.product)
         self._pending_fills.append(Fill(
             order_id=order.id,
             symbol=order.symbol,
@@ -44,7 +47,7 @@ class SimulatedExecutionClient:
             quantity=order.quantity,
             price=price,
             timestamp=timestamp,
-            costs=0.0,
+            costs=costs,
         ))
         return order.id
 
