@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     # redirect URI needed for this flow).
     GOOGLE_CLIENT_ID: Optional[str] = None
 
+    # Session JWT (bearer token, not a cookie -- see auth design spec).
+    JWT_SECRET: str = "change-me-in-production"
+    SESSION_MAX_AGE_SECONDS: int = 604800  # 7 days
+
     @field_validator("OMNIROUTE_API_KEYS", mode="before")
     @classmethod
     def assemble_omniroute_keys(cls, v: Optional[List[str]], info: ValidationInfo) -> List[str]:
