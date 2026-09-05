@@ -1,3 +1,5 @@
+# Legacy: superseded by backend/strategies/{intraday,longterm}/ for the new engine.
+# Kept for the existing /agents/analyze endpoint until it's migrated in a later task.
 import pandas as pd
 from typing import List, Optional
 from datetime import datetime
