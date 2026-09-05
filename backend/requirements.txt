@@ -15,7 +15,9 @@ lxml>=4.9.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 httpx>=0.24.0
+mongomock-motor>=0.0.34  # test-only: in-memory motor-compatible Mongo for InstrumentMaster tests
 yfinance>=0.2.0
+kiteconnect>=5.0.0  # Zerodha Kite Connect SDK -- Task 5, mocked in all tests, no live account exists
 langchain
 langgraph
 langchain-google-genai

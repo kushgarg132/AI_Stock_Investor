@@ -2,35 +2,32 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 import logging
 
-from backend.components.master.agent import MasterAgent, MasterOutput
+from backend.research.graph import ResearchAgent, ResearchReport
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-master_agent = MasterAgent()
+research_agent = ResearchAgent()
 
 class AnalyzeRequest(BaseModel):
     symbol: str
     account_size: float = 100000.0
     current_exposure: float = 0.0
 
-@router.post("/analyze/{symbol}", response_model=MasterOutput)
+@router.post("/analyze/{symbol}", response_model=ResearchReport)
 async def analyze_stock(symbol: str, request: AnalyzeRequest = None):
     """
-    Trigger the full multi-agent analysis pipeline for a given stock symbol.
+    Generate a research report (company info, news/sentiment, LLM thesis) for
+    a given stock symbol. NOTE: this endpoint no longer produces a trade
+    decision or signal -- see backend.scoring.composite / backend.strategies
+    for that. account_size/current_exposure are accepted for request-body
+    backward compatibility but are no longer used by the research pipeline.
     """
     logger.info(f"Received analyze request for {symbol}")
-    # Handle optional body
-    account_size = 100000.0
-    current_exposure = 0.0
-    
-    if request:
-        account_size = request.account_size
-        current_exposure = request.current_exposure
-        
+
     try:
-        result = await master_agent.run(symbol, account_size, current_exposure)
-        logger.info(f"Analysis complete for {symbol}, decision: {result.decision}")
+        result = await research_agent.run(symbol)
+        logger.info(f"Research report complete for {symbol}")
         return result
     except Exception as e:
         logger.error(f"Error analyzing {symbol}: {e}", exc_info=True)
