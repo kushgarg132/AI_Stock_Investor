@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "change-me-in-production"
     SESSION_MAX_AGE_SECONDS: int = 604800  # 7 days
 
+    # Explicit CORS allowlist -- replaces allow_origins=["*"], which is an
+    # invalid combination with allow_credentials=True for real credentialed
+    # cross-origin requests.
+    CORS_ALLOWED_ORIGINS: List[str] = ["http://localhost:5173"]
+
+    @field_validator("CORS_ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def split_cors_origins(cls, v):
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
     @field_validator("OMNIROUTE_API_KEYS", mode="before")
     @classmethod
     def assemble_omniroute_keys(cls, v: Optional[List[str]], info: ValidationInfo) -> List[str]:

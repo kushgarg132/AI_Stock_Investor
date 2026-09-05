@@ -35,11 +35,14 @@ app = FastAPI(
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from backend.routers import auth as auth_router
+app.include_router(auth_router.router, prefix=settings.API_PREFIX, tags=["Auth"])
 
 # Database Events
 @app.on_event("startup")
