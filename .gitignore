@@ -61,6 +61,8 @@ dist/
 
 # Data and cache
 data/
+!backend/data/
+!backend/data/**
 *.db
 *.sqlite3
 redis-data/
