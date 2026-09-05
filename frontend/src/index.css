@@ -122,3 +122,12 @@
 .bg-down-soft {
   @apply bg-rose-500/10 text-rose-400 border border-rose-500/20;
 }
+
+/* Smooth exponential-ease flow indicator (no bounce/elastic spring feel) */
+@keyframes flow-down {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(6px); opacity: 1; }
+}
+.animate-flow-down {
+  animation: flow-down 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}

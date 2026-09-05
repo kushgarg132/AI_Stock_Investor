@@ -35,7 +35,7 @@ const AgentNode = ({ icon: Icon, title, description, color, className }) => (
 
 const FlowArrow = ({ className }) => (
   <div className={cn("flex flex-col items-center justify-center text-muted-foreground/50", className)}>
-    <ArrowDown className="w-6 h-6 animate-bounce" />
+    <ArrowDown className="w-6 h-6 animate-flow-down" />
   </div>
 );
 
