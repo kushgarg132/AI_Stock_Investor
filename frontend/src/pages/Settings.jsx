@@ -36,7 +36,7 @@ const Settings = () => {
             setStatus({ message: 'API Key saved successfully!', type: 'success' });
             setApiKey('');
             fetchKeyStatus();
-        } catch (error) {
+        } catch {
             setStatus({ message: 'Failed to save API key', type: 'error' });
         } finally {
             setStatus(prev => ({ ...prev, loading: false }));

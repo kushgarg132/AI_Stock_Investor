@@ -26,7 +26,6 @@ const AnalysisCard = ({ data }) => {
     final_signal,
     all_signals,
     indicators,
-    market_data,
     risk,
     sentiment
   } = data;

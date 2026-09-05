@@ -8,6 +8,33 @@ import { formatCurrency, formatCompactNumber } from '../../utils/formatters';
 import { BarChart2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
+const CustomTooltip = ({ active, payload, label, currency }) => {
+  if (active && payload && payload.length) {
+    const p = payload[0].payload;
+    return (
+      <div className="bg-popover/95 border border-border p-3 rounded-xl shadow-xl backdrop-blur-md">
+         <p className="text-xs text-muted-foreground mb-1">{label}</p>
+         <div className="space-y-0.5">
+            <div className="flex items-center gap-4 justify-between">
+              <span className="text-sm font-bold text-foreground">{formatCurrency(p.price, currency)}</span>
+              <span className={cn(
+                  "text-xs font-medium",
+                  p.close >= p.open ? "text-emerald-400" : "text-rose-400"
+              )}>
+                  {((p.close - p.open) / p.open * 100).toFixed(2)}%
+              </span>
+            </div>
+            <div className="flex items-center gap-4 justify-between text-xs text-muted-foreground">
+               <span>Vol:</span>
+               <span className="font-mono">{formatCompactNumber(p.volume)}</span>
+            </div>
+         </div>
+      </div>
+    );
+  }
+  return null;
+};
+
 const TradingChart = ({ data, technicals, className, currency }) => {
   const [timeframe, setTimeframe] = useState('1Y');
 
@@ -30,33 +57,6 @@ const TradingChart = ({ data, technicals, className, currency }) => {
     price: Number(item.close),
     volume: Number(item.volume)
   }));
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      const p = payload[0].payload;
-      return (
-        <div className="bg-popover/95 border border-border p-3 rounded-xl shadow-xl backdrop-blur-md">
-           <p className="text-xs text-muted-foreground mb-1">{label}</p>
-           <div className="space-y-0.5">
-              <div className="flex items-center gap-4 justify-between">
-                <span className="text-sm font-bold text-foreground">{formatCurrency(p.price, currency)}</span>
-                <span className={cn(
-                    "text-xs font-medium",
-                    p.close >= p.open ? "text-emerald-400" : "text-rose-400"
-                )}>
-                    {((p.close - p.open) / p.open * 100).toFixed(2)}%
-                </span>
-              </div>
-              <div className="flex items-center gap-4 justify-between text-xs text-muted-foreground">
-                 <span>Vol:</span>
-                 <span className="font-mono">{formatCompactNumber(p.volume)}</span>
-              </div>
-           </div>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <Card className={cn("flex flex-col h-[500px]", className)}>
@@ -116,7 +116,7 @@ const TradingChart = ({ data, technicals, className, currency }) => {
                             }}
                             width={80}
                         />
-                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
+                        <Tooltip content={(props) => <CustomTooltip {...props} currency={currency} />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
                         
                         {technicals?.nearest_support && (
                              <ReferenceLine yAxisId="right" y={technicals.nearest_support} stroke="#22c55e" strokeDasharray="5 5" label={{ value: 'SUP', fill: '#22c55e', fontSize: 10, position: 'insideLeft' }} />

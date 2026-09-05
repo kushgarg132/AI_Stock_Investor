@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 
+// `Icon` is used via JSX (<Icon .../>) below -- this project has no eslint-plugin-react
+// installed to teach no-unused-vars that pattern.
+// eslint-disable-next-line no-unused-vars
 const AgentNode = ({ icon: Icon, title, description, color, className }) => (
   <div className={cn(
     "relative flex flex-col items-center p-6 bg-card border border-border rounded-xl shadow-lg transition-all hover:scale-105 hover:shadow-primary/20",
