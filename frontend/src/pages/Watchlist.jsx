@@ -5,12 +5,14 @@ import api, { endpoints } from '../utils/api';
 import { Trash2, TrendingUp, TrendingDown, ArrowRight, Loader2 } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 const Watchlist = () => {
     const [watchlist, setWatchlist] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
-    const userId = "default-user"; // Hardcoded for single user mode
+    const { user } = useAuth();
+    const userId = user.id;
 
     useEffect(() => {
         fetchWatchlist();

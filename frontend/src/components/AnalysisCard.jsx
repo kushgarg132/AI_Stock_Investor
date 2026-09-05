@@ -5,6 +5,7 @@ import { Badge } from './common/Badge';
 import { MetricCard } from './common/MetricCard';
 import { formatCurrency, formatCompactNumber, formatPercent } from '../utils/formatters';
 import { cn } from '../utils/cn';
+import { useAuth } from '../context/AuthContext';
 
 // Panels
 import TradingChart from './stock/TradingChart';
@@ -15,9 +16,10 @@ import NewsFeed from './analysis/NewsFeed';
 import EventsList from './analysis/EventsList';
 
 const AnalysisCard = ({ data }) => {
+  const { user } = useAuth();
   if (!data) return null;
 
-  const { 
+  const {
     company_info,
     price_data, 
     technical_analysis,
@@ -68,7 +70,7 @@ const AnalysisCard = ({ data }) => {
              <button 
                 onClick={async () => {
                     try {
-                        await api.post(endpoints.watchlist.add("default-user", company_info?.symbol));
+                        await api.post(endpoints.watchlist.add(user.id, company_info?.symbol));
                         alert("Added to watchlist!"); 
                     } catch (e) {
                          console.error(e);

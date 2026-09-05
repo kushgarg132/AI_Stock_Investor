@@ -10,11 +10,14 @@ import {
 
   Network,
   Brain,
-  X
+  X,
+  LogOut
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { useAuth } from '../../context/AuthContext';
 
 const Sidebar = ({ isOpen, onClose }) => {
+  const { user, logout } = useAuth();
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/' },
     { icon: ScanLine, label: 'Scanner', path: '/scanner' },
@@ -71,11 +74,22 @@ const Sidebar = ({ isOpen, onClose }) => {
       {/* User / Footer */}
       <div className="p-4 border-t border-border/50">
         <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/30 border border-border/30">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500" />
+            {user?.picture ? (
+                <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
+            ) : (
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500" />
+            )}
             <div className="flex-1 overflow-hidden">
-                <p className="text-sm font-medium truncate">Pro Investor</p>
-                <p className="text-xs text-muted-foreground">Pro Plan</p>
+                <p className="text-sm font-medium truncate">{user?.name || 'Signed in'}</p>
+                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
+            <button
+                onClick={logout}
+                title="Log out"
+                className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+                <LogOut className="w-4 h-4" />
+            </button>
         </div>
       </div>
     </aside>
