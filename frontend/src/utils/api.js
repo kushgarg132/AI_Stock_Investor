@@ -41,6 +41,10 @@ export const endpoints = {
     equity: '/trading/equity',
     instruments: (q) => `/trading/instruments?q=${encodeURIComponent(q)}`,
   },
+  settings: {
+    omnirouteModels: '/settings/omniroute-models',
+    omnirouteModel: '/settings/omniroute-model',
+  },
 };
 
 export default api;

@@ -1,45 +1,52 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Layout from '../components/Layout';
-import { UserCog, Key, Save, Eye, EyeOff, CheckCircle, AlertCircle } from 'lucide-react';
-import api from '../utils/api';
+import { UserCog, Cpu, Save, CheckCircle, AlertCircle, Search } from 'lucide-react';
+import api, { endpoints } from '../utils/api';
 
 const Settings = () => {
-    const [apiKey, setApiKey] = useState('');
-    const [showKey, setShowKey] = useState(false);
+    const [models, setModels] = useState([]);
+    const [currentModel, setCurrentModel] = useState('');
+    const [query, setQuery] = useState('');
+    const [selectedModel, setSelectedModel] = useState('');
+    const [dropdownOpen, setDropdownOpen] = useState(false);
     const [status, setStatus] = useState({ loading: false, message: '', type: '' });
-    const [keyStatus, setKeyStatus] = useState({ isSet: false, maskedKey: '' });
+    const [loadError, setLoadError] = useState('');
 
     useEffect(() => {
-        fetchKeyStatus();
+        let cancelled = false;
+        (async () => {
+            try {
+                const [modelsRes, currentRes] = await Promise.all([
+                    api.get(endpoints.settings.omnirouteModels),
+                    api.get(endpoints.settings.omnirouteModel),
+                ]);
+                if (cancelled) return;
+                setModels(modelsRes.data);
+                setCurrentModel(currentRes.data.model);
+                setSelectedModel(currentRes.data.model);
+                setLoadError('');
+            } catch {
+                if (!cancelled) setLoadError('Could not load models from the OmniRoute gateway.');
+            }
+        })();
+        return () => { cancelled = true; };
     }, []);
 
-    const fetchKeyStatus = async () => {
-        try {
-            const response = await api.get('/settings/gemini-keys');
-            setKeyStatus({ isSet: response.data.is_set, maskedKey: response.data.masked_key || '' });
-        } catch (error) {
-            console.error('Failed to fetch key status:', error);
-        }
-    };
+    const filteredModels = useMemo(() => {
+        if (!query.trim()) return models;
+        const q = query.trim().toLowerCase();
+        return models.filter((m) => m.id.toLowerCase().includes(q));
+    }, [models, query]);
 
-    const handleSave = async (e) => {
-        e.preventDefault();
-        if (!apiKey.trim()) {
-            setStatus({ message: 'Please enter a valid API key', type: 'error' });
-            return;
-        }
-
+    const handleSave = async () => {
+        if (!selectedModel.trim()) return;
         setStatus({ loading: true, message: '', type: '' });
         try {
-            await api.post('/settings/gemini-keys', { gemini_api_key: apiKey });
-
-            setStatus({ message: 'API Key saved successfully!', type: 'success' });
-            setApiKey('');
-            fetchKeyStatus();
+            await api.post(endpoints.settings.omnirouteModel, { model: selectedModel });
+            setStatus({ loading: false, message: 'Model saved successfully!', type: 'success' });
+            setCurrentModel(selectedModel);
         } catch {
-            setStatus({ message: 'Failed to save API key', type: 'error' });
-        } finally {
-            setStatus(prev => ({ ...prev, loading: false }));
+            setStatus({ loading: false, message: 'Failed to save model', type: 'error' });
         }
     };
 
@@ -51,90 +58,94 @@ const Settings = () => {
                         <UserCog className="w-8 h-8 text-primary" />
                     </div>
                     <div>
-                        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
-                            Settings
-                        </h1>
-                        <p className="text-muted-foreground">Manage your API keys and application preferences</p>
+                        <h1 className="text-3xl font-bold">Settings</h1>
+                        <p className="text-muted-foreground">Manage your application preferences</p>
                     </div>
                 </div>
 
                 <div className="space-y-6">
-                    {/* API Key Section */}
                     <div className="bg-card border border-border/50 rounded-2xl p-6 shadow-sm backdrop-blur-sm">
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center space-x-3">
-                                <Key className="w-5 h-5 text-indigo-500" />
-                                <h2 className="text-xl font-semibold">Gemini API Configuration</h2>
-                            </div>
-                            <div className={`px-3 py-1 rounded-full text-xs font-medium flex items-center space-x-1 ${
-                                keyStatus.isSet 
-                                    ? 'bg-green-500/10 text-green-500 border border-green-500/20' 
-                                    : 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-                            }`}>
-                                {keyStatus.isSet ? (
-                                    <><CheckCircle className="w-3 h-3" /><span>Active</span></>
-                                ) : (
-                                    <><AlertCircle className="w-3 h-3" /><span>Not Set</span></>
-                                )}
-                            </div>
+                        <div className="flex items-center space-x-3 mb-6">
+                            <Cpu className="w-5 h-5 text-indigo-500" />
+                            <h2 className="text-xl font-semibold">OmniRoute Model</h2>
                         </div>
 
-                        {keyStatus.isSet && (
-                            <div className="mb-6 p-4 bg-muted/50 rounded-lg border border-border/50">
-                                <p className="text-sm text-muted-foreground mb-1">Current Key:</p>
-                                <code className="text-sm font-mono text-primary">{keyStatus.maskedKey}</code>
+                        {loadError ? (
+                            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-xl flex items-center gap-3 text-destructive">
+                                <AlertCircle className="w-5 h-5" />
+                                <p className="text-sm">{loadError}</p>
                             </div>
-                        )}
+                        ) : (
+                            <>
+                                {currentModel && (
+                                    <div className="mb-6 p-4 bg-muted/50 rounded-lg border border-border/50">
+                                        <p className="text-sm text-muted-foreground mb-1">Current Model:</p>
+                                        <code className="text-sm font-mono text-primary">{currentModel}</code>
+                                    </div>
+                                )}
 
-                        <form onSubmit={handleSave} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium mb-2 pl-1">
-                                    Update API Key
-                                </label>
                                 <div className="relative">
-                                    <input
-                                        type={showKey ? "text" : "password"}
-                                        value={apiKey}
-                                        onChange={(e) => setApiKey(e.target.value)}
-                                        placeholder="Enter your Gemini API Key"
-                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 pr-12 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-                                    />
+                                    <label className="block text-sm font-medium mb-2 pl-1">Select Model</label>
+                                    <div className="relative">
+                                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                                        <input
+                                            type="text"
+                                            value={dropdownOpen ? query : selectedModel}
+                                            onFocus={() => { setDropdownOpen(true); setQuery(''); }}
+                                            onBlur={() => setTimeout(() => setDropdownOpen(false), 150)}
+                                            onChange={(e) => setQuery(e.target.value)}
+                                            placeholder="Search models (e.g. claude, gemini)..."
+                                            className="w-full bg-background border border-border rounded-xl pl-11 pr-4 py-3 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                                        />
+                                    </div>
+                                    {dropdownOpen && (
+                                        <div className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-border bg-popover shadow-xl custom-scrollbar">
+                                            {filteredModels.length === 0 ? (
+                                                <p className="px-4 py-3 text-sm text-muted-foreground">No matching models</p>
+                                            ) : (
+                                                filteredModels.slice(0, 100).map((m) => (
+                                                    <button
+                                                        key={m.id}
+                                                        type="button"
+                                                        onMouseDown={(e) => e.preventDefault()}
+                                                        onClick={() => {
+                                                            setSelectedModel(m.id);
+                                                            setDropdownOpen(false);
+                                                        }}
+                                                        className="w-full text-left px-4 py-2.5 text-sm font-mono hover:bg-muted/50 transition-colors"
+                                                    >
+                                                        {m.id}
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-6">
+                                    {status.message && (
+                                        <p className={`text-sm flex items-center ${status.type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
+                                            {status.type === 'success' ? (
+                                                <CheckCircle className="w-4 h-4 mr-1.5" />
+                                            ) : (
+                                                <AlertCircle className="w-4 h-4 mr-1.5" />
+                                            )}
+                                            {status.message}
+                                        </p>
+                                    )}
                                     <button
-                                        type="button"
-                                        onClick={() => setShowKey(!showKey)}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                        onClick={handleSave}
+                                        disabled={status.loading || !selectedModel.trim() || selectedModel === currentModel}
+                                        className={`ml-auto flex items-center space-x-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 ${
+                                            (status.loading || !selectedModel.trim() || selectedModel === currentModel) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'
+                                        }`}
                                     >
-                                        {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        <Save className="w-4 h-4" />
+                                        <span>{status.loading ? 'Saving...' : 'Save Model'}</span>
                                     </button>
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-2 pl-1">
-                                    Your key is stored locally in your .env file and never shared.
-                                </p>
-                            </div>
-
-                            <div className="flex items-center justify-between pt-2">
-                                {status.message && (
-                                    <p className={`text-sm flex items-center ${
-                                        status.type === 'success' ? 'text-green-500' : 'text-red-500'
-                                    }`}>
-                                        {status.type === 'success' ? (
-                                            <CheckCircle className="w-4 h-4 mr-1.5" />
-                                        ) : (
-                                            <AlertCircle className="w-4 h-4 mr-1.5" />
-                                        )}
-                                        {status.message}
-                                    </p>
-                                )}
-                                <button disabled={status.loading || !apiKey.trim()} 
-                                    className={`ml-auto flex items-center space-x-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 ${
-                                        (status.loading || !apiKey.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'
-                                    }`}
-                                >
-                                    <Save className="w-4 h-4" />
-                                    <span>{status.loading ? 'Saving...' : 'Save Configuration'}</span>
-                                </button>
-                            </div>
-                        </form>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
