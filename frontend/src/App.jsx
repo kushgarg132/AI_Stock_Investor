@@ -6,19 +6,22 @@ import Watchlist from './pages/Watchlist';
 import Portfolio from './pages/Portfolio';
 import Trading from './pages/Trading';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
+import RequireAuth from './components/RequireAuth';
 
 import SystemArchitecturePage from './pages/SystemArchitecturePage';
 
 const App = () => {
   return (
     <Routes>
-      <Route path="/" element={<Dashboard />} />
-      <Route path="/scanner" element={<ScannerPage />} />
-      <Route path="/trading" element={<Trading />} />
-      <Route path="/watchlist" element={<Watchlist />} />
-      <Route path="/portfolio" element={<Portfolio />} />
-      <Route path="/settings" element={<Settings />} />
-      <Route path="/system" element={<SystemArchitecturePage />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/" element={<RequireAuth><Dashboard /></RequireAuth>} />
+      <Route path="/scanner" element={<RequireAuth><ScannerPage /></RequireAuth>} />
+      <Route path="/trading" element={<RequireAuth><Trading /></RequireAuth>} />
+      <Route path="/watchlist" element={<RequireAuth><Watchlist /></RequireAuth>} />
+      <Route path="/portfolio" element={<RequireAuth><Portfolio /></RequireAuth>} />
+      <Route path="/settings" element={<RequireAuth><Settings /></RequireAuth>} />
+      <Route path="/system" element={<RequireAuth><SystemArchitecturePage /></RequireAuth>} />
     </Routes>
   );
 };

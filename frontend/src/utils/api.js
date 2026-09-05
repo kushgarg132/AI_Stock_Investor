@@ -19,6 +19,31 @@ const api = axios.create({
   },
 });
 
+const TOKEN_STORAGE_KEY = 'asi_token';
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (token && config.url !== '/auth/google') {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 || error.response?.status === 403) {
+      localStorage.removeItem(TOKEN_STORAGE_KEY);
+      if (window.location.pathname !== '/login') {
+        window.location.assign('/login');
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const AUTH_TOKEN_STORAGE_KEY = TOKEN_STORAGE_KEY;
+
 export const endpoints = {
   analyze: (symbol) => `/agents/analyze/${symbol}`,
   scanner: (type = 'bullish') => `/agents/scanner/${type}`,
@@ -44,6 +69,11 @@ export const endpoints = {
   settings: {
     omnirouteModels: '/settings/omniroute-models',
     omnirouteModel: '/settings/omniroute-model',
+  },
+  auth: {
+    google: '/auth/google',
+    logout: '/auth/logout',
+    me: '/auth/me',
   },
 };
 
