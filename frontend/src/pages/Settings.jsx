@@ -125,7 +125,7 @@ const Settings = () => {
                                         {status.message}
                                     </p>
                                 )}
-                                <button disbled={status.loading || !apiKey.trim()} 
+                                <button disabled={status.loading || !apiKey.trim()} 
                                     className={`ml-auto flex items-center space-x-2 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 ${
                                         (status.loading || !apiKey.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105 active:scale-95'
                                     }`}

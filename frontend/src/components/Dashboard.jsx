@@ -7,6 +7,7 @@ import MarketOverview from './dashboard/MarketOverview';
 import GlobalIndices from './dashboard/GlobalIndices';
 import MarketNewsWidget from './dashboard/MarketNewsWidget';
 import TrendingStocks from './dashboard/TrendingStocks';
+import WatchlistWidget from './dashboard/WatchlistWidget';
 
 import AnalysisCard from './AnalysisCard';
 import { Badge } from './common/Badge';
@@ -81,7 +82,6 @@ const Dashboard = () => {
   const handleClear = () => {
     setData(null);
     setError(null);
-    setSymbol(""); // Clear search bar symbol if needed, though strictly not in state
     window.history.replaceState({}, document.title);
   };
 
@@ -122,12 +122,12 @@ const Dashboard = () => {
                              </div>
                         </div>
                         <div className="space-y-6">
-                             <TrendingStocks 
-                                stocks={marketData.trending} 
+                             <TrendingStocks
+                                stocks={marketData.trending}
                                 isLoading={marketLoading}
-                                onStockClick={handleSearch} 
+                                onStockClick={handleSearch}
                              />
-
+                             <WatchlistWidget />
                         </div>
                      </div>
                 </div>

@@ -4,15 +4,13 @@ import {
   CartesianGrid, Bar, ComposedChart, ReferenceLine 
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../common/Card';
-import { Button } from '../common/Button';
 import { formatCurrency, formatCompactNumber } from '../../utils/formatters';
-import { Maximize2, BarChart2, TrendingUp } from 'lucide-react';
+import { BarChart2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 const TradingChart = ({ data, technicals, className, currency }) => {
   const [timeframe, setTimeframe] = useState('1Y');
-  const [chartType, setChartType] = useState('area');
-  
+
   // Filter data based on timeframe
   const filteredData = React.useMemo(() => {
     if (!data) return [];
@@ -82,15 +80,6 @@ const TradingChart = ({ data, technicals, className, currency }) => {
                         </button>
                     ))}
                 </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-                 <Button variant="ghost" size="sm" onClick={() => setChartType(chartType === 'area' ? 'bar' : 'area')}>
-                    <TrendingUp className="w-4 h-4" />
-                 </Button>
-                 <Button variant="ghost" size="sm">
-                    <Maximize2 className="w-4 h-4" />
-                 </Button>
             </div>
         </CardHeader>
 
