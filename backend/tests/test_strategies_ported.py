@@ -234,3 +234,22 @@ def test_build_default_strategies_returns_expected_four():
         ("LONGTERM", "1d"),
     ]
     assert all(s.spec.universe == [SYMBOL] for s in strategies)
+
+
+def test_build_default_strategies_omits_quality_momentum_without_universe():
+    strategies = build_default_strategies(universe=[SYMBOL])
+    assert all(s.spec.name != "quality_momentum" for s in strategies)
+
+
+def test_build_default_strategies_includes_quality_momentum_when_provided():
+    strategies = build_default_strategies(
+        universe=[SYMBOL],
+        quality_universe=[SYMBOL],
+        quality_scores={SYMBOL: 0.6},
+    )
+    assert len(strategies) == 5
+
+    quality_strategy = next(s for s in strategies if s.spec.name == "quality_momentum")
+    assert quality_strategy.spec.mode == "LONGTERM"
+    assert quality_strategy.spec.timeframe == "1d"
+    assert quality_strategy.spec.universe == [SYMBOL]
