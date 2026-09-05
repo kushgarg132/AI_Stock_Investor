@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.configs.settings import settings
 from backend.configs.logging_config import setup_logging
 from backend.database import db
+from backend.instruments.master import InstrumentMaster
+from backend.instruments.loader import SeedFileSource, refresh_instruments
 
 # Setup Logging
 logger = setup_logging()
@@ -45,6 +47,8 @@ async def startup_db_client():
     logger.info("Starting up AI Stock Investor API...")
     await db.connect_to_database()
     logger.info("Database connected.")
+    count = await refresh_instruments(SeedFileSource(), InstrumentMaster(db.db))
+    logger.info(f"Instrument master seeded: {count} upserted.")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
