@@ -94,18 +94,19 @@ class LLMService:
             return f"Error generating response: {str(e)}"
 
     def get_llm(self):
-        """Returns a MultiKeyChain wrapping ChatGoogleGenerativeAI instances"""
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        
+        """Returns a MultiKeyChain wrapping ChatOpenAI instances pointed at the OmniRoute gateway"""
+        from langchain_openai import ChatOpenAI
+
         keys = self.keys
         if not keys:
             return None
-            
+
         llms = []
         for key in keys:
-            llms.append(ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash",
-                google_api_key=key,
+            llms.append(ChatOpenAI(
+                model=settings.OMNIROUTE_MODEL,
+                api_key=key,
+                base_url=settings.OMNIROUTE_BASE_URL,
                 temperature=0.0,
                 max_retries=0 # We handle retries via rotation
             ))

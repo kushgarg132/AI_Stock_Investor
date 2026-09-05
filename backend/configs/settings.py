@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_API_KEYS: List[str] = []
     
+    # OmniRoute (self-hosted OpenAI-compatible gateway) -- GEMINI_API_KEY(S) above
+    # holds the OmniRoute gateway key, not a real Google key, when this is used.
+    OMNIROUTE_BASE_URL: str = "http://omniroute:20128/v1"
+    OMNIROUTE_MODEL: str = "antigravity/gemini-2.5-flash"
+
     NEWS_API_KEY: Optional[str] = None
     ALPHA_VANTAGE_API_KEY: Optional[str] = None
     FMP_API_KEY: Optional[str] = None
