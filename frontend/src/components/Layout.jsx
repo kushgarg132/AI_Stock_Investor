@@ -1,4 +1,8 @@
 import React from 'react';
+// `motion` is used via JSX (<motion.div>) -- this project has no eslint-plugin-react
+// installed to teach no-unused-vars that pattern.
+// eslint-disable-next-line no-unused-vars
+import { motion } from 'framer-motion';
 import Sidebar from './layout/Sidebar';
 import ChatWidget from './ChatWidget';
 import { cn } from '../utils/cn';
@@ -25,20 +29,28 @@ const Layout = ({ children }) => {
       
       {/* Overlay for mobile sidebar */}
       {isSidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 md:hidden animate-in fade-in duration-200"
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
-      
+
       {/* Main Content Wrapper */}
       <main className={cn(
         "transition-all duration-300 min-h-screen pt-16 md:pt-0", // Add padding-top on mobile for header
         "md:pl-64" // Push content for sidebar on desktop
       )}>
-        <div className="container mx-auto p-4 md:p-8 max-w-7xl animate-in fade-in duration-500">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="container mx-auto p-4 md:p-8 max-w-7xl"
+        >
           {children}
-        </div>
+        </motion.div>
       </main>
       <ChatWidget />
     </div>

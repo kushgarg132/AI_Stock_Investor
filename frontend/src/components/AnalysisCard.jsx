@@ -1,8 +1,8 @@
 import React from 'react';
 import { Building2, ArrowUp, ArrowDown, Globe, BookMarked } from 'lucide-react';
 import api, { endpoints } from '../utils/api';
-import { Card, CardContent } from './common/Card';
 import { Badge } from './common/Badge';
+import { MetricCard } from './common/MetricCard';
 import { formatCurrency, formatCompactNumber, formatPercent } from '../utils/formatters';
 import { cn } from '../utils/cn';
 
@@ -123,19 +123,6 @@ const AnalysisCard = ({ data }) => {
     </div>
   );
 };
-
-const MetricCard = ({ label, value, highlight }) => (
-    <Card className="hover:border-primary/20 transition-colors">
-        <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
-            <p className={cn(
-                "text-lg font-bold font-mono",
-                highlight === 'up' && "text-emerald-400",
-                highlight === 'down' && "text-rose-400"
-            )}>{value}</p>
-        </CardContent>
-    </Card>
-);
 
 export default AnalysisCard;
 
