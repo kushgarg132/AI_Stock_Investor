@@ -16,12 +16,11 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379"
 
-    # API Keys (Set these in your .env file)
-    GEMINI_API_KEY: Optional[str] = None
-    GEMINI_API_KEYS: List[str] = []
-    
-    # OmniRoute (self-hosted OpenAI-compatible gateway) -- GEMINI_API_KEY(S) above
-    # holds the OmniRoute gateway key, not a real Google key, when this is used.
+    # OmniRoute (self-hosted OpenAI-compatible gateway) -- the only LLM
+    # provider this app uses. OMNIROUTE_API_KEY(S) holds the gateway key
+    # issued from the OmniRoute dashboard's Endpoints page, not a Google key.
+    OMNIROUTE_API_KEY: Optional[str] = None
+    OMNIROUTE_API_KEYS: List[str] = []
     OMNIROUTE_BASE_URL: str = "http://omniroute:20128/v1"
     OMNIROUTE_MODEL: str = "antigravity/gemini-2.5-flash"
 
@@ -33,13 +32,13 @@ class Settings(BaseSettings):
     KITE_API_KEY: Optional[str] = None
     KITE_API_SECRET: Optional[str] = None
 
-    @field_validator("GEMINI_API_KEYS", mode="before")
+    @field_validator("OMNIROUTE_API_KEYS", mode="before")
     @classmethod
-    def assemble_gemini_keys(cls, v: Optional[List[str]], info: ValidationInfo) -> List[str]:
+    def assemble_omniroute_keys(cls, v: Optional[List[str]], info: ValidationInfo) -> List[str]:
         if isinstance(v, list) and v:
             return v
         # Fallback to splitting the single key if it contains commas, or just using it
-        values = info.data.get("GEMINI_API_KEY")
+        values = info.data.get("OMNIROUTE_API_KEY")
         if values:
             return [k.strip() for k in values.split(",") if k.strip()]
         return []

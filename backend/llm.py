@@ -69,9 +69,9 @@ class LLMService:
 
     def __init__(self):
         # We prefer using LangChain for agents, but this client is for direct single usage if needed
-        self.keys = settings.GEMINI_API_KEYS
+        self.keys = settings.OMNIROUTE_API_KEYS
         if not self.keys:
-            logger.warning("GEMINI_API_KEY(S) not set. LLM features will be disabled.")
+            logger.warning("OMNIROUTE_API_KEY(S) not set. LLM features will be disabled.")
 
     async def get_completion(self, prompt: str, system_prompt: str = "You are a helpful assistant.") -> str:
         llm = self.get_llm()
@@ -119,7 +119,7 @@ class LLMService:
     def reload_keys(self):
         """Reloads keys from global settings"""
         from backend.configs.settings import settings
-        self.keys = settings.GEMINI_API_KEYS
+        self.keys = settings.OMNIROUTE_API_KEYS
         logger.info(f"LLMService keys reloaded. Count: {len(self.keys)}")
 
 llm_service = LLMService()
