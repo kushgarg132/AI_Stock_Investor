@@ -65,3 +65,5 @@ data/
 *.sqlite3
 redis-data/
 mongo-data/
+.vercel
+.env*
