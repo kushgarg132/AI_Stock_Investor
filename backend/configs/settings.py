@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     FINNHUB_API_KEY: Optional[str] = None
 
+    # Zerodha Kite Connect (Task 5) -- both None until a real app is
+    # registered at developers.kite.trade; KiteSessionManager must treat
+    # that as UNCONFIGURED, not crash.
+    KITE_API_KEY: Optional[str] = None
+    KITE_API_SECRET: Optional[str] = None
+
     @field_validator("GEMINI_API_KEYS", mode="before")
     @classmethod
     def assemble_gemini_keys(cls, v: Optional[List[str]], info: ValidationInfo) -> List[str]:
