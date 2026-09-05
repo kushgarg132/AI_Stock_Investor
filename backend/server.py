@@ -76,9 +76,11 @@ app.include_router(settings_router.router, prefix=settings.API_PREFIX, tags=["Se
 
 from backend.routers import market_data
 from backend.routers import watchlist
+from backend.routers import trading
 
 app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"])
 app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"])
+app.include_router(trading.router, prefix=settings.API_PREFIX, tags=["Trading"])
 
 @app.get("/docs", include_in_schema=False)
 async def redirect_docs():
