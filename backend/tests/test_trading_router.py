@@ -20,6 +20,7 @@ from mongomock_motor import AsyncMongoMockClient
 
 from backend.core.models import Fill, Position, Side
 from backend.engine.persistence import LedgerStore
+from backend.instruments.master import InstrumentMaster
 from backend.instruments.models import Instrument
 from backend.routers import trading
 
@@ -151,6 +152,50 @@ class _FakeDb:
     # collections; this test never queries them, just proves start/stop.
     db = AsyncMongoMockClient()["test_db"]
     redis = None
+
+
+# ---------------------------------------------------------------------------
+# GET /trading/instruments (wraps InstrumentMaster.search)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def instruments_client(monkeypatch):
+    fake_db = AsyncMongoMockClient()["test_db"]
+    monkeypatch.setattr(trading, "db", type("_Db", (), {"db": fake_db})())
+
+    async def _seed():
+        master = InstrumentMaster(fake_db)
+        await master.upsert_many([
+            Instrument(
+                exchange="NSE", tradingsymbol="RELIANCE", name="Reliance Industries",
+                instrument_token=1, exchange_token=1, instrument_type="EQ",
+                segment="NSE", lot_size=1, tick_size=0.05,
+            ),
+            Instrument(
+                exchange="NSE", tradingsymbol="TCS", name="Tata Consultancy Services",
+                instrument_token=2, exchange_token=2, instrument_type="EQ",
+                segment="NSE", lot_size=1, tick_size=0.05,
+            ),
+        ])
+    asyncio.run(_seed())
+
+    app = FastAPI()
+    app.include_router(trading.router, prefix="/api/v1")
+    return TestClient(app)
+
+
+def test_search_instruments_returns_matches(instruments_client):
+    resp = instruments_client.get("/api/v1/trading/instruments", params={"q": "RELI"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["tradingsymbol"] == "RELIANCE"
+
+
+def test_search_instruments_no_matches_returns_empty_list(instruments_client):
+    resp = instruments_client.get("/api/v1/trading/instruments", params={"q": "NOSUCHSYMBOL"})
+    assert resp.status_code == 200
+    assert resp.json() == []
 
 
 def test_start_then_stop_round_trip(monkeypatch):

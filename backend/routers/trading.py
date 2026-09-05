@@ -172,3 +172,10 @@ async def get_equity(ledger: LedgerStore = Depends(get_ledger_store)):
     # across open positions plus zero unrealized movement, not a crash.
     equity = portfolio.equity({})
     return {"equity": equity}
+
+
+@router.get("/instruments")
+async def search_instruments(q: str, limit: int = 10):
+    master = InstrumentMaster(db.db)
+    instruments = await master.search(q, limit=limit)
+    return [i.model_dump() for i in instruments]
