@@ -59,6 +59,9 @@ class _FirstBarBuyStrategy:
         ctx.submit(Intent(
             symbol=self.spec.universe[0], side=Side.BUY, strength=1.0,
             reason_codes=["first-bar-test"],
+            # Task 6's sizer requires a stop_hint to size at all -- 10 below
+            # entry gives a clean risk_per_share=10 for the expected-size math.
+            stop_hint=90.0,
         ))
 
     def on_fill(self, ctx, fill) -> None:
@@ -102,7 +105,10 @@ async def test_backtest_result_shows_exactly_one_trade():
     trade = result.trades[0]
     assert trade["symbol"] == SYMBOL
     assert trade["side"] == "BUY"
-    assert trade["quantity"] == 1.0
+    # strength=1.0, no cached sentiment (neutral) -> scored.final = 0.85;
+    # risk_pct=0.85% of the default 1,000,000 account / risk_per_share=10
+    # (entry 100 - stop_hint 90) = 850 whole shares. See runner.size_intents.
+    assert trade["quantity"] == 850.0
     assert trade["price"] == candles[0].close  # filled at the first bar's close
 
 
@@ -127,5 +133,5 @@ async def test_runner_fill_reflects_in_portfolio_position():
     )
 
     pos = portfolio.positions[SYMBOL]
-    assert pos.quantity == 1.0
+    assert pos.quantity == 850.0
     assert pos.avg_price == candles[0].close

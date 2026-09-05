@@ -23,6 +23,8 @@ async def run_backtest(
     start: datetime,
     end: datetime,
     timeframe: str,
+    account_size: float = 1_000_000.0,
+    max_exposure: float = 1_000_000.0,
 ) -> BacktestResult:
     feed = HistoricalFeed(provider, instruments, start, end, timeframe)
     execution = SimulatedExecutionClient()
@@ -63,6 +65,8 @@ async def run_backtest(
         portfolio=portfolio,
         clock=clock,
         symbol_for_token=feed.symbol_for_token,
+        account_size=account_size,
+        max_exposure=max_exposure,
     )
 
     total_trades = len(trades)
