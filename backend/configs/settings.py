@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     KITE_API_KEY: Optional[str] = None
     KITE_API_SECRET: Optional[str] = None
 
+    # Google Sign-In (ID-token verification only -- no client secret, no
+    # redirect URI needed for this flow).
+    GOOGLE_CLIENT_ID: Optional[str] = None
+
     @field_validator("OMNIROUTE_API_KEYS", mode="before")
     @classmethod
     def assemble_omniroute_keys(cls, v: Optional[List[str]], info: ValidationInfo) -> List[str]:
