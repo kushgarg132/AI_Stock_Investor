@@ -18,8 +18,8 @@ const ScannerPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await api.post(endpoints.scanner('bullish'));
-      setResults(response.data.results);
+      const response = await api.get(endpoints.scanner);
+      setResults(response.data.bullish_picks);
     } catch (err) {
       console.error(err);
       setError("Failed to run scanner. Backend might be unreachable.");
@@ -86,7 +86,7 @@ const ScannerPage = () => {
                                     <h3 className="text-xl font-bold group-hover:text-primary transition-colors">{stock.symbol}</h3>
                                     <div className="flex items-center gap-2 mt-1">
                                         <Badge variant="success">Strong Buy</Badge>
-                                        <span className="text-xs text-muted-foreground font-mono">Signal: {(stock.signal_strength * 100).toFixed(0)}%</span>
+                                        <span className="text-xs text-muted-foreground font-mono">Confidence: {stock.confidence.toFixed(0)}%</span>
                                     </div>
                                 </div>
                                 <div className="text-right">
@@ -101,7 +101,7 @@ const ScannerPage = () => {
                                     <span className="float-right font-mono font-medium text-rose-400">{formatCurrency(stock.stop_loss)}</span>
                                 </div>
                                 <div className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
-                                    {stock.reason}
+                                    {stock.reasons?.join(' · ')}
                                 </div>
                             </div>
 
