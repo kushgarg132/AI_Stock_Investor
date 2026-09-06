@@ -40,6 +40,7 @@ from backend.engine.portfolio import Portfolio
 from backend.engine.runner import run
 from backend.runs import RunStore
 from backend.instruments.master import InstrumentMaster
+from backend.marks import mark_prices
 from backend.strategies.registry import build_default_strategies
 from backend.suggestions.sink import SuggestionSink
 from backend.suggestions.store import SuggestionStore
@@ -244,7 +245,14 @@ async def list_runs(
 
 @router.get("/positions")
 async def get_positions(ledger: LedgerStore = Depends(get_ledger_store)):
+    """The stored unrealized_pnl is always 0 -- the engine loop never marks a
+    position to market -- so this route marks it here, at read time, with a
+    best-effort live quote per symbol."""
     positions = await ledger.get_open_positions()
+    quotes = await mark_prices(db.db, positions.keys())
+    portfolio = Portfolio()
+    portfolio.positions = positions
+    portfolio.equity(quotes)
     return {symbol: position.model_dump() for symbol, position in positions.items()}
 
 

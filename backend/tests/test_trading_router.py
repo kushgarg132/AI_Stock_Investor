@@ -77,7 +77,12 @@ def ledger():
 
 
 @pytest.fixture
-def client(ledger):
+def client(ledger, monkeypatch):
+    async def no_quotes(db, symbols):
+        return {}
+
+    monkeypatch.setattr(trading, "mark_prices", no_quotes)
+
     app = FastAPI()
     app.include_router(trading.router, prefix="/api/v1")
     app.dependency_overrides[trading.get_ledger_store] = lambda: ledger

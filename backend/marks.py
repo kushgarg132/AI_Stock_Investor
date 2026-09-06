@@ -15,6 +15,12 @@ from backend.instruments.master import InstrumentMaster
 
 logger = logging.getLogger(__name__)
 
+# The P&L cards are the first thing on the statement, and they are read in a
+# glance during the session. A slow upstream must cost the unrealised line,
+# never the whole page: past this the marks are simply absent, which the
+# callers already treat as "no mark" rather than a price of zero.
+TIMEOUT_SECONDS = 4.0
+
 
 async def mark_prices(db, symbols: Iterable[str]) -> dict[str, float]:
     symbols = list(dict.fromkeys(symbols))
@@ -35,5 +41,12 @@ async def mark_prices(db, symbols: Iterable[str]) -> dict[str, float]:
             logger.warning("no mark price for %s: %s", symbol, exc)
             return symbol, None
 
-    results = await asyncio.gather(*(_one(symbol) for symbol in symbols))
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*(_one(symbol) for symbol in symbols)), timeout=TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        logger.warning("mark prices timed out for %d symbol(s)", len(symbols))
+        return {}
+
     return {symbol: float(price) for symbol, price in results if price}
