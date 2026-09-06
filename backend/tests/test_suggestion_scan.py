@@ -188,6 +188,32 @@ async def test_scan_records_one_suggestion_per_symbol_from_the_final_session(mon
 
 
 @pytest.mark.asyncio
+async def test_scan_does_not_query_sentiment_for_warmup_bars(mongo, monkeypatch):
+    """The sentiment cache only ever holds *today's* reading. Applying it to
+    a signal that fired on one of the ~400 warmup days would misattribute
+    today's mood to a stale day, and -- since `_AlwaysBuyStrategy` fires on
+    every one of its 60 bars -- doing this for real would mean 60 Redis
+    round trips for one symbol instead of the single one that's actually
+    meaningful (the final, armed session)."""
+    from unittest.mock import AsyncMock
+
+    from backend.suggestions import scan as scan_module
+
+    monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
+    monkeypatch.setattr(scan_module, "build_default_strategies", _only_always_buy)
+
+    redis = AsyncMock()
+    redis.get.return_value = "0.5"
+
+    await scan_universe(mongo, user_id="alice", universe=["RELIANCE"], redis=redis)
+
+    assert redis.get.await_count <= 1, (
+        f"expected at most one sentiment lookup (the final session's), got {redis.get.await_count}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_scan_with_no_resolvable_symbols_returns_nothing(mongo, monkeypatch):
     from backend.suggestions import scan as scan_module
 

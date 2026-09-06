@@ -51,6 +51,28 @@ class _ArmOnFinalSession:
             yield bar
 
 
+class _ArmedOnlyRedis:
+    """Suppresses sentiment lookups for every bar except the armed one.
+
+    `get_cached_sentiment` reads whatever is cached *right now*; applying
+    that reading to a signal a strategy fired on one of the ~400 warmup
+    days would misattribute today's sentiment to a stale day, and multiplies
+    into one Redis round trip per warmup-day intent across the whole
+    universe -- discarded moments later by the sink regardless of what it
+    returns. Only the final (armed) session's intents are current enough
+    for the cached value to mean anything.
+    """
+
+    def __init__(self, redis, sink: SuggestionSink) -> None:
+        self._redis = redis
+        self._sink = sink
+
+    async def get(self, key):
+        if self._redis is None or not self._sink.armed:
+            return None
+        return await self._redis.get(key)
+
+
 async def scan_universe(
     db,
     user_id: str,
@@ -101,7 +123,7 @@ async def scan_universe(
         portfolio=Portfolio(),
         clock=SimClock(bars[0].timestamp),
         symbol_for_token=symbol_for_token,
-        redis=redis,
+        redis=_ArmedOnlyRedis(redis, sink),
         account_size=account_size,
         max_exposure=max_exposure,
         ledger=None,
