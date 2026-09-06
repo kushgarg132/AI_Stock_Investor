@@ -1,140 +1,240 @@
 import React, { useEffect, useState } from 'react';
+import { Play, Square, Loader2 } from 'lucide-react';
 import Layout from '../components/Layout';
 import TradingControlBar from '../components/trading/TradingControlBar';
-import RunStatusBanner from '../components/trading/RunStatusBanner';
-import PositionsTable from '../components/trading/PositionsTable';
-import FillsTable from '../components/trading/FillsTable';
-import { MetricCard } from '../components/common/MetricCard';
-import { useTradingPoll } from '../hooks/useTradingPoll';
+import { Sheet, Statement, Row, Cell, Money, Empty, Ruling, NetLine } from '../components/doc/Doc';
+import { Button } from '../components/common/Button';
+import { Badge } from '../components/common/Badge';
 import api, { endpoints } from '../utils/api';
-import { formatCurrency } from '../utils/formatters';
-import { AlertCircle } from 'lucide-react';
+import { useTopic } from '../hooks/useStream';
+import {
+  formatCurrency,
+  formatQuantity,
+  formatClock,
+  formatTimeAgo,
+} from '../utils/formatters';
 
-const STORAGE_RUN_ID = 'trading:runId';
-const STORAGE_MODE = 'trading:mode';
-const STORAGE_STARTED_AT = 'trading:startedAt';
-
+/**
+ * The engine's own page: what is running, and the raw executions behind the
+ * statement.
+ *
+ * Runs are read from the server rather than remembered in localStorage — the
+ * backend now records them, so a reload, a second device, or a restart all
+ * agree on what is actually live.
+ */
 const Trading = () => {
-  const [runId, setRunId] = useState(() => localStorage.getItem(STORAGE_RUN_ID));
-  const [mode, setMode] = useState(() => localStorage.getItem(STORAGE_MODE) || 'LONGTERM');
-  const [startedAt, setStartedAt] = useState(() => localStorage.getItem(STORAGE_STARTED_AT));
+  const [runs, setRuns] = useState([]);
+  const [positions, setPositions] = useState({});
+  const [fills, setFills] = useState([]);
+  const [mode, setMode] = useState('LONGTERM');
   const [universeSymbols, setUniverseSymbols] = useState([]);
   const [accountSize, setAccountSize] = useState(1_000_000);
   const [maxExposure, setMaxExposure] = useState(1_000_000);
   const [busy, setBusy] = useState(false);
   const [startError, setStartError] = useState(null);
-  const [ambiguous, setAmbiguous] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const { positions, fills, equity } = useTradingPoll(!!runId);
+  const loadRuns = () =>
+    api
+      .get(endpoints.trading.runs)
+      .then((res) => setRuns(res.data))
+      .catch(() => setRuns([]));
 
-  // One-time check at mount: if we have no run_id but the ledger already has
-  // data, we can't tell whether a run is active elsewhere (no /trading/status
-  // exists) -- surface that honestly rather than pretending we know.
+  const loadLedger = () =>
+    Promise.all([api.get(endpoints.trading.positions), api.get(endpoints.trading.fills)])
+      .then(([positionsRes, fillsRes]) => {
+        setPositions(positionsRes.data);
+        setFills(fillsRes.data);
+      })
+      .catch(() => {});
+
   useEffect(() => {
-    if (runId) return;
-    (async () => {
-      try {
-        const res = await api.get(endpoints.trading.positions);
-        if (Object.keys(res.data).length > 0) setAmbiguous(true);
-      } catch {
-        // ignore -- ambiguity check is best-effort
-      }
-    })();
-  }, [runId]);
+    Promise.all([loadRuns(), loadLedger()]).finally(() => setLoading(false));
+  }, []);
 
-  const handleStart = async () => {
+  useTopic('runs', loadRuns);
+  useTopic('positions', (message) => setPositions(message.data));
+  useTopic('trades', loadLedger);
+
+  const active = runs.find((run) => run.status === 'RUNNING');
+
+  const start = async () => {
     setBusy(true);
     setStartError(null);
     try {
-      const res = await api.post(endpoints.trading.start, {
+      await api.post(endpoints.trading.start, {
         mode,
         universe: universeSymbols.length > 0 ? universeSymbols : undefined,
         account_size: accountSize,
         max_exposure: maxExposure,
       });
-      const newRunId = res.data.run_id;
-      const now = new Date().toISOString();
-      localStorage.setItem(STORAGE_RUN_ID, newRunId);
-      localStorage.setItem(STORAGE_MODE, mode);
-      localStorage.setItem(STORAGE_STARTED_AT, now);
-      setRunId(newRunId);
-      setStartedAt(now);
-      setAmbiguous(false);
+      await loadRuns();
     } catch (err) {
-      setStartError(err.response?.data?.detail || 'Failed to start trading run.');
+      setStartError(err.response?.data?.detail || 'Could not start the run.');
     } finally {
       setBusy(false);
     }
   };
 
-  const handleStop = async () => {
-    if (!runId) return;
+  const stop = async () => {
+    if (!active) return;
     setBusy(true);
     setStartError(null);
     try {
-      await api.post(endpoints.trading.stop, { run_id: runId });
+      await api.post(endpoints.trading.stop, { run_id: active.run_id });
     } catch (err) {
-      // A 404 here means the run is already gone server-side -- still clear
-      // our local state, there's nothing left to stop.
       if (err.response?.status !== 404) {
-        setStartError(err.response?.data?.detail || 'Failed to stop trading run.');
-        setBusy(false);
-        return;
+        setStartError(err.response?.data?.detail || 'Could not stop the run.');
       }
+    } finally {
+      await loadRuns();
+      setBusy(false);
     }
-    localStorage.removeItem(STORAGE_RUN_ID);
-    localStorage.removeItem(STORAGE_MODE);
-    localStorage.removeItem(STORAGE_STARTED_AT);
-    setRunId(null);
-    setStartedAt(null);
-    setBusy(false);
   };
 
-  const positionCount = Object.keys(positions || {}).length;
+  const openPositions = Object.values(positions);
+  const realised = openPositions.reduce((total, p) => total + (p.realized_pnl || 0), 0);
+  const recentFills = [...fills]
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(0, 25);
 
   return (
     <Layout>
-      <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-bold">Trading</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Start or stop a paper-trading run and watch its positions and fills live.
-          </p>
-        </div>
+      <div className="space-y-4">
+        <Sheet
+          title="Engine"
+          meta={active ? `Running since ${formatTimeAgo(active.started_at)}` : 'Idle'}
+          actions={
+            active ? (
+              <Button variant="danger" size="sm" onClick={stop} disabled={busy}>
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Square className="w-3.5 h-3.5" />}
+                Stop
+              </Button>
+            ) : (
+              <Button variant="primary" size="sm" onClick={start} disabled={busy}>
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                Start
+              </Button>
+            )
+          }
+        >
+          {active ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Badge variant="success">Running</Badge>
+              <Badge variant="secondary">{active.mode === 'INTRADAY' ? 'Intraday' : 'Long term'}</Badge>
+              <span className="doc-meta normal-case">
+                {active.universe.length} scrip · run {active.run_id.slice(0, 8)}
+              </span>
+              {active.mode === 'LONGTERM' && (
+                <p className="w-full text-sm text-[var(--ink-soft)]">
+                  Long-term signals from this run file as proposals for your decision rather
+                  than executing.
+                </p>
+              )}
+            </div>
+          ) : (
+            <TradingControlBar
+              mode={mode}
+              onModeChange={setMode}
+              universeSymbols={universeSymbols}
+              onUniverseChange={setUniverseSymbols}
+              accountSize={accountSize}
+              onAccountSizeChange={setAccountSize}
+              maxExposure={maxExposure}
+              onMaxExposureChange={setMaxExposure}
+              isActive={false}
+              onStart={start}
+              onStop={stop}
+              busy={busy}
+              startError={startError}
+            />
+          )}
 
-        <TradingControlBar
-          mode={mode}
-          onModeChange={setMode}
-          universeSymbols={universeSymbols}
-          onUniverseChange={setUniverseSymbols}
-          accountSize={accountSize}
-          onAccountSizeChange={setAccountSize}
-          maxExposure={maxExposure}
-          onMaxExposureChange={setMaxExposure}
-          isActive={!!runId}
-          onStart={handleStart}
-          onStop={handleStop}
-          busy={busy}
-          startError={startError}
-        />
+          {startError && active && (
+            <p className="mt-3 text-sm text-[var(--loss)]">{startError}</p>
+          )}
+        </Sheet>
 
-        <RunStatusBanner runId={runId} mode={mode} startedAt={startedAt} ambiguous={ambiguous} />
+        <Sheet title="Positions" meta={`${openPositions.length} open`}>
+          {loading ? (
+            <Ruling rows={3} />
+          ) : openPositions.length === 0 ? (
+            <Empty title="Flat" detail="No open position on the book." />
+          ) : (
+            <>
+              <Statement
+                columns={[
+                  { key: 'scrip', label: 'Scrip' },
+                  { key: 'qty', label: 'Qty', align: 'right' },
+                  { key: 'avg', label: 'Avg', align: 'right' },
+                  { key: 'realised', label: 'Realised', align: 'right' },
+                ]}
+              >
+                {openPositions.map((position) => (
+                  <Row key={position.symbol}>
+                    <Cell>
+                      <span className="figure-md">{position.symbol}</span>
+                    </Cell>
+                    <Cell align="right" mono>
+                      {formatQuantity(position.quantity)}
+                    </Cell>
+                    <Cell align="right" mono>
+                      {formatCurrency(position.avg_price)}
+                    </Cell>
+                    <Cell align="right">
+                      <Money value={position.realized_pnl} />
+                    </Cell>
+                  </Row>
+                ))}
+              </Statement>
+              <NetLine label="Realised on open scrip">
+                <Money value={realised} />
+              </NetLine>
+            </>
+          )}
+        </Sheet>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <MetricCard
-            label="Realized P&L"
-            value={formatCurrency(equity, 'INR')}
-            highlight={equity > 0 ? 'up' : equity < 0 ? 'down' : undefined}
-            hint="Realized gains/losses only. Does not reflect open-position price movement."
-          />
-          <MetricCard label="Open Positions" value={positionCount} />
-          <MetricCard label="Total Fills" value={(fills || []).length} />
-        </div>
-
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <PositionsTable positions={positions} />
-          <FillsTable fills={fills} />
-        </div>
+        <Sheet title="Executions" meta={`${fills.length} fills`}>
+          {loading ? (
+            <Ruling rows={3} />
+          ) : recentFills.length === 0 ? (
+            <Empty title="No executions yet" detail="Fills appear here as orders are filled." />
+          ) : (
+            <Statement
+              columns={[
+                { key: 'time', label: 'Time' },
+                { key: 'scrip', label: 'Scrip' },
+                { key: 'side', label: 'Side' },
+                { key: 'qty', label: 'Qty', align: 'right' },
+                { key: 'price', label: 'Price', align: 'right' },
+                { key: 'costs', label: 'Charges', align: 'right' },
+              ]}
+            >
+              {recentFills.map((fill) => (
+                <Row key={`${fill.order_id}-${fill.timestamp}`}>
+                  <Cell className="doc-meta normal-case">{formatClock(fill.timestamp)}</Cell>
+                  <Cell>
+                    <span className="figure-md">{fill.symbol}</span>
+                  </Cell>
+                  <Cell>
+                    <Badge variant={fill.side === 'BUY' ? 'success' : 'destructive'}>
+                      {fill.side}
+                    </Badge>
+                  </Cell>
+                  <Cell align="right" mono>
+                    {formatQuantity(fill.quantity)}
+                  </Cell>
+                  <Cell align="right" mono>
+                    {formatCurrency(fill.price)}
+                  </Cell>
+                  <Cell align="right" mono className="text-[var(--ink-faint)]">
+                    {formatCurrency(fill.costs)}
+                  </Cell>
+                </Row>
+              ))}
+            </Statement>
+          )}
+        </Sheet>
       </div>
     </Layout>
   );

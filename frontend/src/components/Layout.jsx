@@ -1,57 +1,49 @@
-import React from 'react';
-// `motion` is used via JSX (<motion.div>) -- this project has no eslint-plugin-react
-// installed to teach no-unused-vars that pattern.
-// eslint-disable-next-line no-unused-vars
-import { motion } from 'framer-motion';
+import React, { useEffect, useState } from 'react';
 import Sidebar from './layout/Sidebar';
+import BottomNav from './layout/BottomNav';
+import Masthead from './layout/Masthead';
 import ChatWidget from './ChatWidget';
-import { cn } from '../utils/cn';
-import { Menu } from 'lucide-react';
+import api, { endpoints } from '../utils/api';
+import { useTopic } from '../hooks/useStream';
 
+/** The note's running number: stable per day, the way an issued note is. */
+const noteNumber = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  const day = Math.floor((now - start) / 86400000);
+  return `${now.getFullYear()}/${String(day).padStart(3, '0')}`;
+};
+
+/**
+ * The shell every page prints inside. The pending count lives here rather than
+ * on the suggestions page, because the whole point of the count is to be
+ * visible from wherever you are.
+ */
 const Layout = ({ children }) => {
-  const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
+  const [pending, setPending] = useState(0);
+
+  useEffect(() => {
+    api
+      .get(endpoints.suggestions.list({ status: 'PENDING' }))
+      .then((res) => setPending(res.data.length))
+      .catch(() => setPending(0));
+  }, []);
+
+  useTopic('suggestions', (message) => {
+    if (message.event === 'created') setPending((count) => count + 1);
+    if (message.event === 'decided') setPending((count) => Math.max(0, count - 1));
+  });
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-sans selection:bg-primary/20">
-      {/* Mobile Header */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-background/80 backdrop-blur-md border-b border-border h-16 px-4 flex items-center justify-between">
-        <button 
-          onClick={() => setIsSidebarOpen(true)}
-          className="p-2 hover:bg-muted/50 rounded-md"
-        >
-          <Menu className="w-6 h-6" />
-        </button>
-        <span className="font-bold text-lg tracking-tight">NeoTrade AI</span>
-        <div className="w-10" /> {/* Spacer for centering if needed, or user icon */}
+    <div className="min-h-screen bg-[var(--paper)] text-[var(--ink)]">
+      <Sidebar pendingCount={pending} />
+
+      <div className="lg:pl-56">
+        <Masthead noteNumber={noteNumber()} />
+        <main className="mx-auto max-w-6xl px-4 lg:px-8 py-5 pb-28 lg:pb-12">{children}</main>
       </div>
 
-      <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
-      
-      {/* Overlay for mobile sidebar */}
-      {isSidebarOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 bg-black/50 z-40 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main Content Wrapper */}
-      <main className={cn(
-        "transition-all duration-300 min-h-screen pt-16 md:pt-0", // Add padding-top on mobile for header
-        "md:pl-64" // Push content for sidebar on desktop
-      )}>
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="container mx-auto p-4 md:p-8 max-w-7xl"
-        >
-          {children}
-        </motion.div>
-      </main>
+      <BottomNav pendingCount={pending} />
       <ChatWidget />
     </div>
   );

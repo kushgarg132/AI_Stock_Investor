@@ -1,64 +1,72 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../common/Card';
-import { Gauge, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Sheet } from '../doc/Doc';
 import { cn } from '../../utils/cn';
 
+/**
+ * News sentiment as a calibrated reading rather than a dial: the scale is
+ * printed, the needle sits on it, and the number is stated. A gauge that only
+ * shows a coloured arc makes the reader guess at the value.
+ */
+const read = (score) => {
+  if (score >= 0.15) return { label: 'Bullish', tone: 'text-up' };
+  if (score <= -0.15) return { label: 'Bearish', tone: 'text-down' };
+  return { label: 'Neutral', tone: 'text-[var(--ink-soft)]' };
+};
+
 const SentimentPanel = ({ score, summary, sentiment }) => {
-    // Score -1 to 1
-    const getSentimentConfig = (s) => {
-        if (s >= 0.15) return { label: 'Bullish', color: 'text-emerald-400', bg: 'bg-emerald-500/20', icon: TrendingUp };
-        if (s <= -0.15) return { label: 'Bearish', color: 'text-rose-400', bg: 'bg-rose-500/20', icon: TrendingDown };
-        return { label: 'Neutral', color: 'text-amber-400', bg: 'bg-amber-500/20', icon: Minus };
-    };
+  const value = Number(score) || 0;
+  const reading = read(value);
+  const position = ((value + 1) / 2) * 100;
 
-    const config = getSentimentConfig(score);
-    const percentage = Math.round(((score + 1) / 2) * 100); // Map -1..1 to 0..100
+  return (
+    <Sheet title="News sentiment" className="h-full">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className={cn('font-[family-name:var(--font-narrow)] font-bold uppercase tracking-[0.11em] text-lg', reading.tone)}>
+          {reading.label}
+        </span>
+        <span className="figure-md text-base">{value.toFixed(2)}</span>
+      </div>
 
-    return (
-        <Card className="h-full">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                    <Gauge className="w-4 h-4 text-purple-400" />
-                    Market Sentiment
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="flex items-center justify-center py-4">
-                     <div className="relative w-40 h-20 overflow-hidden">
-                        {/* Gauge Arc */}
-                        <div className="absolute top-0 left-0 w-full h-full bg-muted rounded-t-full" />
-                        <div 
-                            className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500 rounded-t-full origin-bottom transition-transform duration-1000 ease-out"
-                            style={{ transform: `rotate(${percentage * 1.8 - 180}deg)` }}
-                        />
-                        {/* Cover inner part */}
-                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-28 h-14 bg-card rounded-t-full flex items-end justify-center pb-2">
-                             <div className={cn("text-xl font-bold", config.color)}>
-                                {config.label}
-                             </div>
-                        </div>
-                     </div>
-                </div>
-                
-                {sentiment && (
-                    <div className="flex justify-between text-xs text-muted-foreground px-4">
-                        <div className="text-center">
-                            <div className="font-mono text-foreground font-bold">{sentiment?.article_count || 0}</div>
-                            <div>Articles</div>
-                        </div>
-                        <div className="text-center">
-                            <div className="font-mono text-foreground font-bold">{sentiment?.risk_score || 0}/10</div>
-                            <div>Impact</div>
-                        </div>
-                    </div>
-                )}
-                
-                <div className="text-sm text-muted-foreground leading-relaxed border-t border-border/50 pt-4 line-clamp-4">
-                    {summary}
-                </div>
-            </CardContent>
-        </Card>
-    );
+      <div className="mt-3">
+        <div
+          className="relative h-6 border border-[var(--rule-strong)] bg-[var(--paper-sunk)]"
+          role="img"
+          aria-label={`Sentiment ${value.toFixed(2)} on a scale from −1 bearish to +1 bullish`}
+        >
+          <div className="absolute inset-y-0 left-1/2 w-px bg-[var(--rule-strong)]" aria-hidden="true" />
+          <div
+            className="absolute inset-y-0 w-0.5 bg-[var(--stamp)]"
+            style={{ left: `calc(${position}% - 1px)` }}
+            aria-hidden="true"
+          />
+        </div>
+        <div className="flex justify-between doc-meta mt-1">
+          <span>−1 bearish</span>
+          <span>0</span>
+          <span>+1 bullish</span>
+        </div>
+      </div>
+
+      {sentiment && (
+        <div className="mt-4 pt-3 border-t border-[var(--rule)] flex justify-between text-sm">
+          <span className="text-[var(--ink-soft)]">
+            Articles read{' '}
+            <span className="figure-md text-[var(--ink)]">{sentiment.article_count || 0}</span>
+          </span>
+          <span className="text-[var(--ink-soft)]">
+            Impact{' '}
+            <span className="figure-md text-[var(--ink)]">{sentiment.risk_score || 0}/10</span>
+          </span>
+        </div>
+      )}
+
+      {summary && (
+        <p className="mt-3 pt-3 border-t border-[var(--rule)] text-sm text-[var(--ink-soft)] leading-relaxed">
+          {summary}
+        </p>
+      )}
+    </Sheet>
+  );
 };
 
 export default SentimentPanel;

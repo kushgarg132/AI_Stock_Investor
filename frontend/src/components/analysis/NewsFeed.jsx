@@ -1,53 +1,50 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '../common/Card';
-import { Newspaper, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
+import { Sheet } from '../doc/Doc';
 import { Badge } from '../common/Badge';
+import { formatNoteDate } from '../../utils/formatters';
+
+const tone = (sentiment) =>
+  sentiment === 'positive' ? 'success' : sentiment === 'negative' ? 'destructive' : 'secondary';
 
 const NewsFeed = ({ articles }) => {
-    if (!articles || articles.length === 0) return null;
+  if (!articles || articles.length === 0) return null;
 
-    return (
-        <Card>
-            <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-base">
-                    <Newspaper className="w-4 h-4 text-blue-400" />
-                    Latest News & Sentiment
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {articles.slice(0, 6).map((article, idx) => (
-                        <a 
-                            key={idx}
-                            href={article.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex flex-col p-4 rounded-lg bg-muted/30 border border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all group h-full"
-                        >
-                            <div className="flex items-start justify-between gap-2 mb-2">
-                                <span className="text-xs font-semibold text-muted-foreground">{article.source}</span>
-                                <time className="text-xs text-muted-foreground/60">{new Date(article.published_at).toLocaleDateString()}</time>
-                            </div>
-                            <h4 className="font-medium text-sm leading-snug mb-3 line-clamp-2 group-hover:text-primary transition-colors">
-                                {article.title}
-                            </h4>
-                            <div className="mt-auto flex items-center justify-between">
-                                {article.sentiment && (
-                                    <Badge variant={
-                                        article.sentiment === 'positive' ? 'success' : 
-                                        article.sentiment === 'negative' ? 'destructive' : 'warning'
-                                    }>
-                                        {article.sentiment}
-                                    </Badge>
-                                )}
-                                <ExternalLink className="w-3 h-3 text-muted-foreground group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all" />
-                            </div>
-                        </a>
-                    ))}
-                </div>
-            </CardContent>
-        </Card>
-    );
+  return (
+    <Sheet title="Press" meta={`${articles.length} filed`}>
+      <ul>
+        {articles.slice(0, 8).map((article, index) => (
+          <li key={article.url || index} className="border-b border-[var(--rule)] last:border-b-0">
+            <a
+              href={article.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group block py-3 hover:bg-[var(--paper-sunk)] -mx-2 px-2 transition-colors"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="doc-meta truncate">{article.source}</span>
+                <span className="doc-meta shrink-0">
+                  {article.published_at ? formatNoteDate(new Date(article.published_at)) : '—'}
+                </span>
+              </div>
+              <p className="mt-1 text-sm leading-snug group-hover:underline decoration-[var(--stamp)] underline-offset-2">
+                {article.title}
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                {article.sentiment && (
+                  <Badge variant={tone(article.sentiment)}>{article.sentiment}</Badge>
+                )}
+                <ExternalLink
+                  className="w-3 h-3 text-[var(--ink-faint)] group-hover:text-[var(--stamp)] transition-colors"
+                  aria-hidden="true"
+                />
+              </div>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </Sheet>
+  );
 };
 
 export default NewsFeed;

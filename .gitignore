@@ -69,3 +69,6 @@ redis-data/
 mongo-data/
 .vercel
 .env*
+
+# Impeccable design-skill working files (screenshots, decision cache)
+.impeccable/

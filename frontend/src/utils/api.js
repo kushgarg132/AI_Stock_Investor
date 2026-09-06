@@ -63,14 +63,37 @@ export const endpoints = {
   trading: {
     start: '/trading/start',
     stop: '/trading/stop',
+    runs: '/trading/runs',
     positions: '/trading/positions',
     fills: '/trading/fills',
     equity: '/trading/equity',
+    trades: (status) => (status ? `/trading/trades?status=${status}` : '/trading/trades'),
     instruments: (q) => `/trading/instruments?q=${encodeURIComponent(q)}`,
+  },
+  suggestions: {
+    list: (params = {}) => {
+      const query = new URLSearchParams(
+        Object.entries(params).filter(([, value]) => value)
+      ).toString();
+      return query ? `/suggestions?${query}` : '/suggestions';
+    },
+    approve: (id) => `/suggestions/${id}/approve`,
+    reject: (id) => `/suggestions/${id}/reject`,
+    scan: '/suggestions/scan',
+  },
+  analytics: {
+    pnl: '/analytics/pnl',
+  },
+  broker: {
+    status: '/broker/kite/status',
+    loginUrl: '/broker/kite/login-url',
+    callback: '/broker/kite/callback',
+    disconnect: '/broker/kite/disconnect',
   },
   settings: {
     omnirouteModels: '/settings/omniroute-models',
     omnirouteModel: '/settings/omniroute-model',
+    preferences: '/settings/preferences',
   },
   auth: {
     google: '/auth/google',

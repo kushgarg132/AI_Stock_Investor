@@ -1,42 +1,146 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Search, Loader2 } from 'lucide-react';
+import api, { endpoints } from '../../utils/api';
 import { cn } from '../../utils/cn';
 
+/**
+ * Instrument lookup against the NSE master. Typeahead rather than blind
+ * submit: the operator knows the company, not always the tradingsymbol, and
+ * guessing wrong used to cost a full analysis round trip to find out.
+ *
+ * Keyboard-complete because a search you cannot drive from the keyboard is a
+ * search you retype.
+ */
 const SmartSearch = ({ onSearch, isLoading, className }) => {
   const [query, setQuery] = useState('');
+  const [matches, setMatches] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const boxRef = useRef(null);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (query.trim()) {
-      onSearch(query.trim());
+  useEffect(() => {
+    const term = query.trim();
+    if (term.length < 2) {
+      setMatches([]);
+      setSearching(false);
+      return undefined;
+    }
+    setSearching(true);
+    const handle = setTimeout(async () => {
+      try {
+        const res = await api.get(endpoints.trading.instruments(term));
+        setMatches(res.data.slice(0, 7));
+        setActive(0);
+      } catch {
+        setMatches([]);
+      } finally {
+        setSearching(false);
+      }
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  useEffect(() => {
+    const onClickAway = (event) => {
+      if (boxRef.current && !boxRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickAway);
+    return () => document.removeEventListener('mousedown', onClickAway);
+  }, []);
+
+  const choose = (symbol) => {
+    setQuery('');
+    setMatches([]);
+    setOpen(false);
+    onSearch(symbol);
+  };
+
+  const onKeyDown = (event) => {
+    if (!open || matches.length === 0) {
+      if (event.key === 'Enter' && query.trim()) choose(query.trim().toUpperCase());
+      return;
+    }
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActive((i) => (i + 1) % matches.length);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActive((i) => (i - 1 + matches.length) % matches.length);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      choose(matches[active].tradingsymbol);
+    } else if (event.key === 'Escape') {
+      setOpen(false);
     }
   };
 
+  const showList = open && (matches.length > 0 || (query.trim().length >= 2 && !searching));
+
   return (
-    <div className={cn("relative w-full max-w-2xl mx-auto group", className)}>
-        {/* Glow Effect */}
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-500" />
-      
-      <form onSubmit={handleSubmit} className="relative flex items-center bg-background/80 backdrop-blur-xl rounded-xl border border-white/10 shadow-2xl overflow-hidden focus-within:ring-2 focus-within:ring-primary/50 transition-all">
-        <div className="pl-4 text-muted-foreground group-focus-within:text-primary transition-colors">
-            {isLoading ? <Loader2 className="w-5 h-5 animate-spin text-primary" /> : <Search className="w-5 h-5" />}
-        </div>
-        
+    <div ref={boxRef} className={cn('relative', className)}>
+      <label htmlFor="instrument-search" className="field-label block mb-1.5">
+        Scrip enquiry
+      </label>
+      <div className="flex items-center gap-2 border-b-2 border-[var(--rule-strong)] focus-within:border-[var(--stamp)] transition-colors">
+        {isLoading || searching ? (
+          <Loader2 className="w-4 h-4 shrink-0 text-[var(--stamp)] animate-spin" />
+        ) : (
+          <Search className="w-4 h-4 shrink-0 text-[var(--ink-faint)]" />
+        )}
         <input
+          id="instrument-search"
           type="text"
+          role="combobox"
+          aria-expanded={showList}
+          aria-controls="instrument-matches"
+          aria-autocomplete="list"
+          autoComplete="off"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search for Stocks (e.g. RELIANCE, TCS)..."
-          className="w-full bg-transparent border-none px-4 py-4 text-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-0"
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder="Company or symbol"
           disabled={isLoading}
+          className="w-full bg-transparent border-0 py-2.5 text-base focus:outline-none focus:ring-0 disabled:opacity-50"
         />
-        
-        <div className="pr-4 hidden sm:flex items-center gap-2">
-            <kbd className="hidden md:inline-flex h-6 select-none items-center gap-1 rounded border border-border bg-muted px-2 text-[10px] font-medium text-muted-foreground opacity-100">
-                <span className="text-xs">↵</span> Enter
-            </kbd>
-        </div>
-      </form>
+      </div>
+
+      {showList && (
+        <ul
+          id="instrument-matches"
+          role="listbox"
+          className="absolute z-20 left-0 right-0 mt-px sheet max-h-72 overflow-y-auto"
+        >
+          {matches.length === 0 ? (
+            <li className="px-3 py-3 text-sm text-[var(--ink-soft)]">
+              No scrip matches “{query.trim()}”.
+            </li>
+          ) : (
+            matches.map((match, index) => (
+              <li key={match.instrument_token} role="option" aria-selected={index === active}>
+                <button
+                  type="button"
+                  onMouseEnter={() => setActive(index)}
+                  onClick={() => choose(match.tradingsymbol)}
+                  className={cn(
+                    'w-full text-left px-3 py-2.5 flex items-baseline justify-between gap-3 border-b border-[var(--rule)] last:border-b-0',
+                    index === active ? 'bg-[var(--stamp-soft)]' : 'bg-transparent'
+                  )}
+                >
+                  <span className="figure-md text-sm">{match.tradingsymbol}</span>
+                  <span className="text-xs text-[var(--ink-soft)] truncate text-right">
+                    {match.name}
+                  </span>
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
     </div>
   );
 };

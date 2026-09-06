@@ -16,20 +16,20 @@ import { cn } from '../utils/cn';
 // `Icon` is used via JSX (<Icon .../>) below -- this project has no eslint-plugin-react
 // installed to teach no-unused-vars that pattern.
 // eslint-disable-next-line no-unused-vars
-const AgentNode = ({ icon: Icon, title, description, color, className }) => (
+const AgentNode = ({ icon: Icon, title, description, className }) => (
   <div className={cn(
-    "relative flex flex-col items-center p-6 bg-card border border-border rounded-xl shadow-lg transition-all hover:scale-105 hover:shadow-primary/20",
+    "relative flex flex-col items-center p-6 sheet transition-colors hover:border-[var(--stamp)]",
     className
   )}>
-    <div className={cn("p-4 rounded-full mb-4 bg-opacity-10", color)}>
-      <Icon className={cn("w-8 h-8", color.replace('bg-', 'text-'))} />
+    <div className="p-3 mb-3 border border-[var(--rule-strong)]">
+      <Icon className="w-7 h-7 text-[var(--stamp)]" strokeWidth={1.5} />
     </div>
     <h3 className="text-lg font-bold mb-2">{title}</h3>
     <p className="text-sm text-center text-muted-foreground">{description}</p>
     
     {/* Connector Dots for visual flows */}
-    <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-3 h-3 bg-border rounded-full" />
-    <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-3 h-3 bg-border rounded-full" />
+    <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-[var(--rule-strong)]" />
+    <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-[var(--rule-strong)]" />
   </div>
 );
 
@@ -54,9 +54,9 @@ const SystemArchitecturePage = () => {
         </div>
 
         {/* Diagram Container */}
-        <div className="relative p-8 md:p-12 rounded-3xl bg-secondary/10 border border-border/50 overflow-hidden">
+        <div className="relative p-8 md:p-12 sheet overflow-hidden">
             {/* Background Elements */}
-            <div className="absolute inset-0 bg-grid-white/5 [mask-image:linear-gradient(to_bottom,transparent,black,transparent)]" />
+            
             
             <div className="relative flex flex-col items-center gap-8">
                 
@@ -68,8 +68,8 @@ const SystemArchitecturePage = () => {
                     icon={Brain} 
                     title="Master Agent" 
                     description="Orchestrator. Decomposes tasks, delegates analysis, and synthesizes final verdict."
-                    color="bg-purple-500"
-                    className="w-full max-w-md border-purple-500/30"
+                    
+                    className="w-full max-w-md"
                 />
 
                 <FlowArrow />
@@ -86,11 +86,11 @@ const SystemArchitecturePage = () => {
                             icon={Newspaper} 
                             title="Analyst Agent" 
                             description="Scrapes live news, analyzes sentiment, and identifies key corporate events."
-                            color="bg-blue-500"
+                            
                             className="h-full"
                         />
                         <ArrowDown className="w-5 h-5 text-muted-foreground/30" />
-                        <div className="text-xs font-mono bg-background/50 px-2 py-1 rounded">Sentiment Score</div>
+                        <div className="doc-meta border border-[var(--rule)] px-2 py-1">Sentiment Score</div>
                     </div>
 
                     {/* Quant */}
@@ -100,11 +100,11 @@ const SystemArchitecturePage = () => {
                             icon={LineChart} 
                             title="Quant Agent" 
                             description="Calculates technical indicators (RSI, MACD) and detects chart patterns."
-                            color="bg-emerald-500"
+                            
                             className="h-full"
                         />
                         <ArrowDown className="w-5 h-5 text-muted-foreground/30" />
-                        <div className="text-xs font-mono bg-background/50 px-2 py-1 rounded">Tech Signals</div>
+                        <div className="doc-meta border border-[var(--rule)] px-2 py-1">Tech Signals</div>
                     </div>
 
                     {/* Risk */}
@@ -114,19 +114,18 @@ const SystemArchitecturePage = () => {
                             icon={Shield} 
                             title="Risk Agent" 
                             description="Evaluates exposure, enforces stop-losses, and calculates safe position sizing."
-                            color="bg-red-500"
                             className="h-full"
                         />
                         <ArrowDown className="w-5 h-5 text-muted-foreground/30" />
-                        <div className="text-xs font-mono bg-background/50 px-2 py-1 rounded">Risk Checks</div>
+                        <div className="doc-meta border border-[var(--rule)] px-2 py-1">Risk Checks</div>
                     </div>
                 </div>
 
                 <div className="w-full max-w-3xl border-t border-border mt-8 mb-4" />
 
                 {/* Level 4: Final Output */}
-                <div className="relative flex items-center gap-4 bg-gradient-to-r from-background to-secondary/20 p-6 rounded-2xl border border-primary/20 w-full max-w-2xl">
-                    <div className="p-3 bg-primary/20 rounded-full text-primary">
+                <div className="relative flex items-center gap-4 sheet p-5 border-[var(--stamp)] w-full max-w-2xl">
+                    <div className="p-2.5 border border-[var(--stamp)] text-[var(--stamp)]">
                         <CheckCircle2 className="w-8 h-8" />
                     </div>
                     <div className="flex-1">
@@ -145,22 +144,22 @@ const SystemArchitecturePage = () => {
 
         {/* Tech Stack Hints */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-            <div className="p-4 rounded-lg bg-card border border-border">
+            <div className="sheet p-4">
                 <Cpu className="w-6 h-6 mx-auto mb-2 text-indigo-400" />
                 <div className="font-semibold">LangGraph</div>
                 <div className="text-xs text-muted-foreground">Orchestration</div>
             </div>
-            <div className="p-4 rounded-lg bg-card border border-border">
+            <div className="sheet p-4">
                 <Brain className="w-6 h-6 mx-auto mb-2 text-orange-400" />
                 <div className="font-semibold">Gemini Pro</div>
                 <div className="text-xs text-muted-foreground">Reasoning Engine</div>
             </div>
-             <div className="p-4 rounded-lg bg-card border border-border">
+             <div className="sheet p-4">
                 <LineChart className="w-6 h-6 mx-auto mb-2 text-green-400" />
                 <div className="font-semibold">TA-Lib</div>
                 <div className="text-xs text-muted-foreground">Technical Analysis</div>
             </div>
-             <div className="p-4 rounded-lg bg-card border border-border">
+             <div className="sheet p-4">
                 <Shield className="w-6 h-6 mx-auto mb-2 text-red-400" />
                 <div className="font-semibold">FastAPI</div>
                 <div className="text-xs text-muted-foreground">High Perf API</div>

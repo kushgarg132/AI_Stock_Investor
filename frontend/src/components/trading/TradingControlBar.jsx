@@ -1,14 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Card, CardContent } from '../common/Card';
-import { Button } from '../common/Button';
-import { Input } from '../common/Input';
+import { Search, X } from 'lucide-react';
 import { Badge } from '../common/Badge';
-import { Search, X, ChevronDown, Play, Square } from 'lucide-react';
 import api, { endpoints } from '../../utils/api';
 import { cn } from '../../utils/cn';
 
-const MODES = ['LONGTERM', 'INTRADAY'];
+const MODES = [
+  { id: 'LONGTERM', label: 'Long term', note: 'Signals file as proposals for your decision.' },
+  { id: 'INTRADAY', label: 'Intraday', note: 'Signals execute without approval.' },
+];
 
+/**
+ * The run's standing instructions, filled in before it starts. The mode note
+ * is shown rather than documented, because the difference between the two —
+ * whether a signal asks you first — is the whole point of the choice.
+ */
 const TradingControlBar = ({
   mode,
   onModeChange,
@@ -18,162 +23,154 @@ const TradingControlBar = ({
   onAccountSizeChange,
   maxExposure,
   onMaxExposureChange,
-  isActive,
-  onStart,
-  onStop,
-  busy,
   startError,
 }) => {
   const [query, setQuery] = useState('');
   const [matches, setMatches] = useState([]);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   useEffect(() => {
-    if (!query.trim()) return undefined;
+    const term = query.trim();
     const handle = setTimeout(async () => {
+      if (term.length < 2) {
+        setMatches([]);
+        return;
+      }
       try {
-        const res = await api.get(endpoints.trading.instruments(query.trim()));
-        setMatches(res.data);
+        const res = await api.get(endpoints.trading.instruments(term));
+        setMatches(res.data.slice(0, 6));
       } catch {
         setMatches([]);
       }
-    }, 300);
+    }, 250);
     return () => clearTimeout(handle);
   }, [query]);
 
-  const visibleMatches = query.trim() ? matches : [];
-
-  const addSymbol = (symbol) => {
-    if (!universeSymbols.includes(symbol)) {
-      onUniverseChange([...universeSymbols, symbol]);
-    }
+  const add = (symbol) => {
+    if (!universeSymbols.includes(symbol)) onUniverseChange([...universeSymbols, symbol]);
     setQuery('');
     setMatches([]);
   };
 
-  const removeSymbol = (symbol) => {
-    onUniverseChange(universeSymbols.filter((s) => s !== symbol));
-  };
+  const selected = MODES.find((item) => item.id === mode);
 
   return (
-    <Card className="glass">
-      <CardContent className="p-6 space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-start gap-6">
-          {/* Mode toggle */}
-          <div>
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">Mode</p>
-            <div className="flex bg-muted/50 rounded-lg p-1">
-              {MODES.map((m) => (
-                <button
-                  key={m}
-                  disabled={isActive}
-                  onClick={() => onModeChange(m)}
-                  className={cn(
-                    'px-4 py-1.5 text-xs font-medium rounded-md transition-all disabled:cursor-not-allowed disabled:opacity-60',
-                    mode === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
+    <div className="space-y-5">
+      <div>
+        <p className="field-label mb-2">Horizon</p>
+        <div className="flex border border-[var(--rule-strong)] w-full sm:w-auto sm:inline-flex">
+          {MODES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onModeChange(item.id)}
+              aria-pressed={mode === item.id}
+              className={cn(
+                'flex-1 sm:flex-none px-4 py-2 font-[family-name:var(--font-narrow)] text-xs font-semibold uppercase tracking-[0.11em] transition-colors',
+                mode === item.id
+                  ? 'bg-[var(--ink)] text-[var(--paper)]'
+                  : 'text-[var(--ink-soft)] hover:text-[var(--ink)]'
+              )}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <p className="doc-meta normal-case mt-1.5">{selected?.note}</p>
+      </div>
 
-          {/* Universe picker */}
-          <div className="flex-1 relative">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-2">
-              Universe {universeSymbols.length === 0 && <span className="normal-case">(default, 83 symbols)</span>}
-            </p>
-            {!isActive && (
-              <Input
-                icon={<Search className="w-4 h-4" />}
-                placeholder="Search symbol to add (e.g. RELIANCE)"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            )}
-            {visibleMatches.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto rounded-lg border border-border bg-popover shadow-xl custom-scrollbar">
-                {visibleMatches.map((m) => (
-                  <button
-                    key={m.tradingsymbol}
-                    onClick={() => addSymbol(m.tradingsymbol)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-left hover:bg-muted/50"
-                  >
-                    <span className="font-mono">{m.tradingsymbol}</span>
-                    <span className="text-muted-foreground text-xs truncate ml-2">{m.name}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {universeSymbols.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {universeSymbols.map((s) => (
-                  <Badge key={s} variant="secondary" className="gap-1.5 pr-1.5">
-                    <span className="font-mono">{s}</span>
-                    {!isActive && (
-                      <button onClick={() => removeSymbol(s)} className="hover:text-foreground">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Start/Stop */}
-          <div className="flex items-end">
-            {isActive ? (
-              <Button variant="danger" onClick={onStop} disabled={busy}>
-                <Square className="w-4 h-4 mr-2" /> Stop Run
-              </Button>
-            ) : (
-              <Button variant="primary" onClick={onStart} disabled={busy}>
-                <Play className="w-4 h-4 mr-2" /> Start Run
-              </Button>
-            )}
-          </div>
+      <div className="relative">
+        <label htmlFor="universe-search" className="field-label block mb-1.5">
+          Universe{' '}
+          {universeSymbols.length === 0 && (
+            <span className="text-[var(--ink-faint)]">— default, 83 scrip</span>
+          )}
+        </label>
+        <div className="flex items-center gap-2 border-b border-[var(--rule-strong)] focus-within:border-[var(--stamp)]">
+          <Search className="w-4 h-4 shrink-0 text-[var(--ink-faint)]" />
+          <input
+            id="universe-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Add a scrip"
+            autoComplete="off"
+            className="w-full bg-transparent border-0 py-2 text-sm focus:outline-none"
+          />
         </div>
 
-        {startError && (
-          <p className="text-sm text-destructive">{startError}</p>
+        {matches.length > 0 && (
+          <ul className="absolute z-10 left-0 right-0 mt-px sheet max-h-56 overflow-y-auto">
+            {matches.map((match) => (
+              <li key={match.instrument_token}>
+                <button
+                  type="button"
+                  onClick={() => add(match.tradingsymbol)}
+                  className="w-full flex items-baseline justify-between gap-3 px-3 py-2 text-left border-b border-[var(--rule)] last:border-b-0 hover:bg-[var(--stamp-soft)]"
+                >
+                  <span className="figure-md text-sm">{match.tradingsymbol}</span>
+                  <span className="text-xs text-[var(--ink-soft)] truncate">{match.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
 
-        {/* Advanced disclosure */}
+        {universeSymbols.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {universeSymbols.map((symbol) => (
+              <Badge key={symbol} variant="default" className="gap-1.5 pr-1">
+                {symbol}
+                <button
+                  type="button"
+                  onClick={() => onUniverseChange(universeSymbols.filter((s) => s !== symbol))}
+                  className="hover:text-[var(--loss)]"
+                  aria-label={`Remove ${symbol}`}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <button
-            onClick={() => setAdvancedOpen((v) => !v)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', advancedOpen && 'rotate-180')} />
-            Advanced
-          </button>
-          {advancedOpen && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 max-w-md">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Account Size</p>
-                <Input
-                  type="number"
-                  disabled={isActive}
-                  value={accountSize}
-                  onChange={(e) => onAccountSizeChange(Number(e.target.value))}
-                />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Max Exposure</p>
-                <Input
-                  type="number"
-                  disabled={isActive}
-                  value={maxExposure}
-                  onChange={(e) => onMaxExposureChange(Number(e.target.value))}
-                />
-              </div>
-            </div>
-          )}
+          <label htmlFor="account-size" className="field-label block mb-1.5">
+            Account size
+          </label>
+          <input
+            id="account-size"
+            type="number"
+            inputMode="numeric"
+            value={accountSize}
+            onChange={(event) => onAccountSizeChange(Number(event.target.value))}
+            className="w-full bg-transparent border-b border-[var(--rule-strong)] py-1.5 figure-md text-sm focus:outline-none focus:border-[var(--stamp)]"
+          />
         </div>
-      </CardContent>
-    </Card>
+        <div>
+          <label htmlFor="max-exposure" className="field-label block mb-1.5">
+            Max exposure
+          </label>
+          <input
+            id="max-exposure"
+            type="number"
+            inputMode="numeric"
+            value={maxExposure}
+            onChange={(event) => onMaxExposureChange(Number(event.target.value))}
+            className="w-full bg-transparent border-b border-[var(--rule-strong)] py-1.5 figure-md text-sm focus:outline-none focus:border-[var(--stamp)]"
+          />
+        </div>
+      </div>
+
+      {startError && (
+        <p
+          role="alert"
+          className="text-sm text-[var(--loss)] border border-[var(--loss)] bg-[var(--loss-wash)] px-3 py-2"
+        >
+          {startError}
+        </p>
+      )}
+    </div>
   );
 };
 

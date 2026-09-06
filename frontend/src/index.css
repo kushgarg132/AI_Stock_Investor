@@ -1,133 +1,291 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+/* ===========================================================================
+   AI Stock Investor — visual world: THE CONTRACT NOTE
+   ---------------------------------------------------------------------------
+   Every Indian trader reads contract notes: the official ruled statement a
+   broker issues after a day's execution. Boxed fields, hairline rules, double
+   rules under a net, typewriter document furniture, one rubber stamp for
+   authority. This app is that document, kept live.
+
+   Light is the default because the scene is a phone in daylight during the
+   NSE session. Dark is not an inversion — it is the carbon copy: the same
+   document on the duplicate sheet, ink gone grey, stamp gone bright.
+   =========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap");
 @import "tailwindcss";
 
 @theme {
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
+  --color-paper: var(--paper);
+  --color-paper-sunk: var(--paper-sunk);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-stamp: var(--stamp);
+  --color-stamp-soft: var(--stamp-soft);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-gain-wash: var(--gain-wash);
+  --color-loss-wash: var(--loss-wash);
 
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
+  /* Compatibility aliases: existing components still name these. */
+  --color-background: var(--paper);
+  --color-foreground: var(--ink);
+  --color-card: var(--paper);
+  --color-card-foreground: var(--ink);
+  --color-popover: var(--paper);
+  --color-popover-foreground: var(--ink);
+  --color-primary: var(--ink);
+  --color-primary-foreground: var(--paper);
+  --color-secondary: var(--paper-sunk);
+  --color-secondary-foreground: var(--ink);
+  --color-muted: var(--paper-sunk);
+  --color-muted-foreground: var(--ink-soft);
+  --color-accent: var(--paper-sunk);
+  --color-accent-foreground: var(--ink);
+  --color-destructive: var(--loss);
+  --color-destructive-foreground: var(--paper);
+  --color-border: var(--rule);
+  --color-input: var(--rule-strong);
+  --color-ring: var(--stamp);
 
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --font-sans: "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-narrow: "Archivo Narrow", "Archivo Narrow Fallback", sans-serif;
+  --font-mono: "Courier Prime", ui-monospace, monospace;
 
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-
-  --radius-lg: 0.5rem;
-  --radius-md: calc(0.5rem - 2px);
-  --radius-sm: calc(0.5rem - 4px);
-  
-  /* Font Family override from config */
-  --font-mono: "JetBrains Mono", monospace;
+  /* A document has square corners. The only radius in this world is the
+     stamp's, and the stamp draws its own. */
+  --radius-lg: 0px;
+  --radius-md: 0px;
+  --radius-sm: 0px;
 }
 
 @layer base {
   :root {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    color-scheme: light;
 
-    --card: 222.2 47% 8%;
-    --card-foreground: 210 40% 98%;
+    /* Office bond, not cream: a cool-neutral sheet under daylight. */
+    --paper: #f4f4f1;
+    --paper-sunk: #e8e8e3;
+    --ink: #17181b;
+    --ink-soft: #55575e;
+    --ink-faint: #8b8d95;
+    --rule: #c9c9c2;
+    --rule-strong: #17181b;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    /* Rubber-stamp ink. The one colour of authority: pending states, the
+       conviction cap, the seal. Never decorative. */
+    --stamp: #3a32a0;
+    --stamp-soft: #ecebf8;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Printed ink, not screen neon. */
+    --gain: #12694a;
+    --loss: #a52f1c;
+    --gain-wash: #e2eee8;
+    --loss-wash: #f6e5e1;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --sheet-shadow: 0 1px 2px rgba(23, 24, 27, 0.06), 0 8px 24px -12px rgba(23, 24, 27, 0.18);
+  }
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+  .dark {
+    color-scheme: dark;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    /* The carbon copy. */
+    --paper: #14150f;
+    --paper-sunk: #1c1d16;
+    --ink: #eae7d8;
+    --ink-soft: #a09d8f;
+    --ink-faint: #6c6a5f;
+    --rule: #33342a;
+    --rule-strong: #6f6f60;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --stamp: #8b81ff;
+    --stamp-soft: #23224a;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    
-    --radius: 0.5rem;
+    --gain: #5fbb8c;
+    --loss: #e0705a;
+    --gain-wash: #1a2a22;
+    --loss-wash: #2e1c18;
+
+    --sheet-shadow: 0 1px 0 rgba(255, 255, 255, 0.03), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
   }
 
   * {
-    @apply border-border;
+    border-color: var(--rule);
   }
-  
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground;
-    font-family: "Inter", system-ui, sans-serif;
-    font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    /* Money must align. Tabular figures everywhere, without exception. */
+    font-feature-settings: "tnum" 1, "calt" 1;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Browser surfaces belong to the design system too. */
+  ::selection {
+    background-color: var(--stamp);
+    color: var(--paper);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--stamp);
+    outline-offset: 2px;
+  }
+
+  input,
+  textarea,
+  select {
+    caret-color: var(--stamp);
+  }
+
+  ::placeholder {
+    color: var(--ink-faint);
+    opacity: 1;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--rule);
+    border: 3px solid var(--paper);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--rule-strong);
   }
 }
 
-@utility glass {
-  @apply bg-slate-900/50 backdrop-blur-md border border-white/5;
+/* ---------------------------------------------------------------------------
+   Document furniture
+   --------------------------------------------------------------------------- */
+
+/* A sheet: the ruled box every region of this app lives inside. */
+@utility sheet {
+  background-color: var(--paper);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--sheet-shadow);
 }
 
-@utility glass-card {
-  @apply bg-card/40 backdrop-blur-sm border border-border/50;
+/* The label voice: condensed, tracked, upper — an official form's field name. */
+@utility field-label {
+  font-family: var(--font-narrow);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+/* Document furniture: note numbers, timestamps, seals. The typewriter carrier,
+   used only where a real note is machine-stamped. */
+@utility doc-meta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* Figures. Aligned, never proportional. */
+@utility figure-lg {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: clamp(2rem, 11vw, 3.25rem);
+  line-height: 1;
+}
+
+@utility figure-md {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* The net rule: a contract note closes its totals with a double rule. */
+@utility rule-net {
+  border-top: 3px double var(--rule-strong);
+}
+
+@utility text-up {
+  color: var(--gain);
+}
+@utility text-down {
+  color: var(--loss);
+}
+
+/* The tear edge between stacked regions of a continuous form. */
+@utility perforated {
+  border-top: 1px dashed var(--rule);
 }
 
 @utility text-balance {
   text-wrap: balance;
 }
 
-/* Custom Scrollbar */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.custom-scrollbar::-webkit-scrollbar-track {
-  background-color: transparent;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  @apply bg-muted rounded-full;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/50;
+/* ---------------------------------------------------------------------------
+   The stamp — this world's one authored motion.
+   A decision lands the way a rubber stamp lands: fast down, slight rotation,
+   ink settling. Nothing else in the app bounces.
+   --------------------------------------------------------------------------- */
+
+@keyframes stamp-land {
+  0% {
+    opacity: 0;
+    transform: scale(1.9) rotate(-14deg);
+    filter: blur(3px);
+  }
+  55% {
+    opacity: 1;
+    transform: scale(0.96) rotate(-3deg);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(-4deg);
+    filter: blur(0);
+  }
 }
 
-/* Data Indicators */
-.text-up {
-  @apply text-emerald-400;
-}
-.text-down {
-  @apply text-rose-400;
-}
-.bg-up-soft {
-  @apply bg-emerald-500/10 text-emerald-400 border border-emerald-500/20;
-}
-.bg-down-soft {
-  @apply bg-rose-500/10 text-rose-400 border border-rose-500/20;
+.stamp-land {
+  animation: stamp-land 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Smooth exponential-ease flow indicator (no bounce/elastic spring feel) */
-@keyframes flow-down {
-  0%, 100% { transform: translateY(0); opacity: 0.5; }
-  50% { transform: translateY(6px); opacity: 1; }
+/* A live figure updating: the ink is re-struck, it does not slide. */
+@keyframes restrike {
+  0% {
+    background-color: var(--stamp-soft);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
-.animate-flow-down {
-  animation: flow-down 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+
+.restrike {
+  animation: restrike 900ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stamp-land,
+  .restrike {
+    animation: none;
+  }
 }

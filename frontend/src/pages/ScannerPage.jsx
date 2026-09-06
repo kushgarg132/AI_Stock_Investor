@@ -1,121 +1,177 @@
 import React, { useState } from 'react';
-import api, { endpoints } from '../utils/api';
 import { useNavigate } from 'react-router-dom';
+import { ScanLine, Loader2, ArrowRight } from 'lucide-react';
 import Layout from '../components/Layout';
-import { Card, CardContent } from '../components/common/Card';
+import { Sheet, Statement, Row, Cell, Empty, Ruling, Field } from '../components/doc/Doc';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
-import { ScanLine, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
-import { formatCurrency } from '../utils/formatters';
+import api, { endpoints } from '../utils/api';
+import { formatCurrency, formatSignedPercent } from '../utils/formatters';
+import { cn } from '../utils/cn';
 
+/**
+ * The bullish scan: a one-off sweep of the universe, reported as findings.
+ * These are leads, not proposals — a proposal carries sizing and a stop and
+ * lives on the decisions page.
+ */
 const ScannerPage = () => {
   const [results, setResults] = useState(null);
+  const [scanTime, setScanTime] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  const runScanner = async () => {
+  const run = async () => {
     setLoading(true);
     setError(null);
     try {
       const response = await api.get(endpoints.scanner);
       setResults(response.data.bullish_picks);
+      setScanTime(response.data.scan_time);
     } catch (err) {
-      console.error(err);
-      setError("Failed to run scanner. Backend might be unreachable.");
+      setError(err?.response?.data?.detail || 'The scanner is unreachable.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAnalyze = (symbol) => {
-    navigate('/', { state: { symbol } });
-  };
-
   return (
     <Layout>
-      <div className="space-y-8 animate-in fade-in duration-500">
-        
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight mb-2">Market Scanner</h1>
-                <p className="text-muted-foreground">Find high-potential opportunities driven by AI analysis.</p>
-            </div>
-            
-            <Button 
-                onClick={runScanner} 
-                disabled={loading} 
-                size="lg" 
-                className="w-full md:w-auto shadow-blue-500/20 shadow-lg"
-            >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : <ScanLine className="w-5 h-5 mr-2" />}
-                {loading ? 'Scanning Markets...' : 'Run Bullish Scan'}
+      <div className="space-y-4">
+        <Sheet
+          title="Scanner"
+          meta={scanTime ? `Last run ${new Date(scanTime).toLocaleTimeString('en-IN')}` : undefined}
+          actions={
+            <Button variant="primary" size="sm" onClick={run} disabled={loading}>
+              {loading ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ScanLine className="w-3.5 h-3.5" />
+              )}
+              {loading ? 'Scanning' : 'Run scan'}
             </Button>
-        </div>
+          }
+        >
+          <p className="text-sm text-[var(--ink-soft)]">
+            Sweeps the NIFTY universe for bullish technical setups. Findings are leads to
+            enquire on — sized proposals with a stop arrive on the decisions page instead.
+          </p>
+          {error && (
+            <p
+              role="alert"
+              className="mt-3 text-sm text-[var(--loss)] border border-[var(--loss)] bg-[var(--loss-wash)] px-3 py-2"
+            >
+              {error}
+            </p>
+          )}
+        </Sheet>
 
-        {/* Error State */}
-        {error && (
-            <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive flex items-center gap-3">
-                <AlertCircle className="w-5 h-5" />
-                <span>{error}</span>
-            </div>
-        )}
+        {loading ? (
+          <Sheet title="Scanning">
+            <Ruling rows={5} />
+          </Sheet>
+        ) : results === null ? (
+          <Sheet>
+            <Empty
+              title="No scan run yet"
+              detail="Run a scan to see what the technical filters are picking up right now."
+            />
+          </Sheet>
+        ) : results.length === 0 ? (
+          <Sheet>
+            <Empty title="Nothing bullish" detail="No scrip in the universe met the filters." />
+          </Sheet>
+        ) : (
+          <Sheet title="Findings" meta={`${results.length}`}>
+            {/* Phone: stacked findings with their reasons. */}
+            <ul className="sm:hidden">
+              {results.map((pick) => (
+                <li key={pick.symbol} className="py-3 border-b border-[var(--rule)] last:border-b-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/', { state: { symbol: pick.symbol } })}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="figure-md text-sm">{pick.symbol}</span>
+                      <span
+                        className={cn(
+                          'figure-md text-sm',
+                          pick.change_percent >= 0 ? 'text-up' : 'text-down'
+                        )}
+                      >
+                        {formatSignedPercent(pick.change_percent)}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-3">
+                      <Field label="Last" value={formatCurrency(pick.current_price)} />
+                      <Field label="Target" value={formatCurrency(pick.target_price)} tone="up" />
+                      <Field label="Stop" value={formatCurrency(pick.stop_loss)} tone="down" />
+                    </div>
+                    {pick.reasons?.length > 0 && (
+                      <p className="mt-2 doc-meta normal-case">{pick.reasons.join(' · ')}</p>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
 
-        {/* Empty State */}
-        {!results && !loading && !error && (
-            <div className="h-64 flex flex-col items-center justify-center text-center p-8 rounded-2xl border-2 border-dashed border-border/50 bg-muted/10">
-                <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
-                    <ScanLine className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-lg font-semibold mb-1">Ready to Scan</h3>
-                <p className="text-sm text-muted-foreground max-w-sm">
-                    Click "Run Bullish Scan" to have our Quant Agent analyze the Nifty Smallcap 100 for breakout candidates.
-                </p>
-            </div>
-        )}
-
-        {/* Results Grid */}
-        {results && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {results.map((stock, idx) => (
-                    <Card key={idx} className="group hover:border-primary/50 transition-all duration-300">
-                        <CardContent className="p-6">
-                            <div className="flex justify-between items-start mb-4">
-                                <div>
-                                    <h3 className="text-xl font-bold group-hover:text-primary transition-colors">{stock.symbol}</h3>
-                                    <div className="flex items-center gap-2 mt-1">
-                                        <Badge variant="success">Strong Buy</Badge>
-                                        <span className="text-xs text-muted-foreground font-mono">Confidence: {stock.confidence.toFixed(0)}%</span>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <div className="text-sm text-muted-foreground">Target</div>
-                                    <div className="font-mono font-bold text-emerald-400">{formatCurrency(stock.target_price)}</div>
-                                </div>
-                            </div>
-                            
-                            <div className="space-y-3 mb-6">
-                                <div className="p-3 rounded-lg bg-muted/50 text-sm">
-                                    <span className="text-muted-foreground">Stop Loss:</span>
-                                    <span className="float-right font-mono font-medium text-rose-400">{formatCurrency(stock.stop_loss)}</span>
-                                </div>
-                                <div className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
-                                    {stock.reasons?.join(' · ')}
-                                </div>
-                            </div>
-
-                            <Button 
-                                variant="outline" 
-                                className="w-full group-hover:bg-primary group-hover:text-primary-foreground group-hover:border-primary transition-all"
-                                onClick={() => handleAnalyze(stock.symbol)}
-                            >
-                                Deep Analysis <ArrowRight className="w-4 h-4 ml-2" />
-                            </Button>
-                        </CardContent>
-                    </Card>
+            <div className="hidden sm:block">
+              <Statement
+                columns={[
+                  { key: 'scrip', label: 'Scrip' },
+                  { key: 'last', label: 'Last', align: 'right' },
+                  { key: 'change', label: 'Change', align: 'right' },
+                  { key: 'target', label: 'Target', align: 'right' },
+                  { key: 'stop', label: 'Stop', align: 'right' },
+                  { key: 'conf', label: 'Confidence', align: 'right' },
+                ]}
+              >
+                {results.map((pick) => (
+                  <Row
+                    key={pick.symbol}
+                    className="group cursor-pointer hover:bg-[var(--paper-sunk)]"
+                    onClick={() => navigate('/', { state: { symbol: pick.symbol } })}
+                  >
+                    <Cell>
+                      <span className="figure-md">{pick.symbol}</span>
+                      <span className="block doc-meta normal-case truncate max-w-[18rem]">
+                        {pick.reasons?.join(' · ')}
+                      </span>
+                    </Cell>
+                    <Cell align="right" mono>
+                      {formatCurrency(pick.current_price)}
+                    </Cell>
+                    <Cell align="right">
+                      <span
+                        className={cn(
+                          'figure-md text-sm',
+                          pick.change_percent >= 0 ? 'text-up' : 'text-down'
+                        )}
+                      >
+                        {formatSignedPercent(pick.change_percent)}
+                      </span>
+                    </Cell>
+                    <Cell align="right" mono className="text-up">
+                      {formatCurrency(pick.target_price)}
+                    </Cell>
+                    <Cell align="right" mono className="text-down">
+                      {formatCurrency(pick.stop_loss)}
+                    </Cell>
+                    <Cell align="right">
+                      <span className="inline-flex items-center gap-2">
+                        <Badge variant="secondary">{pick.confidence}%</Badge>
+                        <ArrowRight
+                          className="w-4 h-4 text-[var(--ink-faint)] group-hover:text-[var(--stamp)] transition-colors"
+                          aria-hidden="true"
+                        />
+                      </span>
+                    </Cell>
+                  </Row>
                 ))}
+              </Statement>
             </div>
+          </Sheet>
         )}
       </div>
     </Layout>

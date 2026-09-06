@@ -5,14 +5,13 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '../common/Card';
 import { formatCurrency, formatCompactNumber } from '../../utils/formatters';
-import { BarChart2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 const CustomTooltip = ({ active, payload, label, currency }) => {
   if (active && payload && payload.length) {
     const p = payload[0].payload;
     return (
-      <div className="bg-popover/95 border border-border p-3 rounded-xl shadow-xl backdrop-blur-md">
+      <div className="sheet p-3">
          <p className="text-xs text-muted-foreground mb-1">{label}</p>
          <div className="space-y-0.5">
             <div className="flex items-center gap-4 justify-between">
@@ -59,21 +58,20 @@ const TradingChart = ({ data, technicals, className, currency }) => {
   }));
 
   return (
-    <Card className={cn("flex flex-col h-[500px]", className)}>
-        <CardHeader className="flex flex-row items-center justify-between py-4 border-b border-border/50">
+    <Card className={cn("flex flex-col h-[420px]", className)}>
+        <CardHeader className="flex flex-row items-center justify-between">
             <div className="flex items-center gap-4">
-                <CardTitle className="flex items-center gap-2">
-                    <BarChart2 className="w-5 h-5 text-primary" />
-                    Price Action
-                </CardTitle>
-                <div className="flex bg-muted/50 rounded-lg p-1">
+                <CardTitle>Price action</CardTitle>
+                <div className="flex border border-[var(--rule-strong)]">
                     {['1M', '3M', '6M', '1Y'].map(tf => (
                          <button
                             key={tf}
                             onClick={() => setTimeframe(tf)}
                             className={cn(
-                                "px-3 py-1 text-xs font-medium rounded-md transition-all",
-                                timeframe === tf ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                                "px-2.5 py-1 font-[family-name:var(--font-narrow)] text-[0.6875rem] font-semibold uppercase tracking-[0.11em] transition-colors",
+                                timeframe === tf
+                                    ? "bg-[var(--ink)] text-[var(--paper)]"
+                                    : "text-[var(--ink-soft)] hover:text-[var(--ink)]"
                             )}
                         >
                             {tf}
@@ -89,14 +87,14 @@ const TradingChart = ({ data, technicals, className, currency }) => {
                     <ComposedChart data={formattedData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
                         <defs>
                             <linearGradient id="colorPrice" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                <stop offset="5%" stopColor="var(--stamp)" stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor="var(--stamp)" stopOpacity={0}/>
                             </linearGradient>
                         </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--rule)" vertical={false} />
                         <XAxis 
                             dataKey="date" 
-                            stroke="#64748b"
+                            stroke="var(--ink-faint)"
                             tick={{ fontSize: 11 }}
                             tickLine={false}
                             axisLine={false}
@@ -106,7 +104,7 @@ const TradingChart = ({ data, technicals, className, currency }) => {
                             yAxisId="right"
                             orientation="right"
                             domain={['auto', 'auto']}
-                            stroke="#64748b"
+                            stroke="var(--ink-faint)"
                             tick={{ fontSize: 11 }}
                             tickLine={false}
                             axisLine={false}
@@ -116,21 +114,21 @@ const TradingChart = ({ data, technicals, className, currency }) => {
                             }}
                             width={80}
                         />
-                        <Tooltip content={(props) => <CustomTooltip {...props} currency={currency} />} cursor={{ stroke: 'rgba(255,255,255,0.1)', strokeWidth: 1 }} />
+                        <Tooltip content={(props) => <CustomTooltip {...props} currency={currency} />} cursor={{ stroke: 'var(--rule-strong)', strokeWidth: 1 }} />
                         
                         {technicals?.nearest_support && (
-                             <ReferenceLine yAxisId="right" y={technicals.nearest_support} stroke="#22c55e" strokeDasharray="5 5" label={{ value: 'SUP', fill: '#22c55e', fontSize: 10, position: 'insideLeft' }} />
+                             <ReferenceLine yAxisId="right" y={technicals.nearest_support} stroke="var(--gain)" strokeDasharray="5 5" label={{ value: 'SUP', fill: 'var(--gain)', fontSize: 10, position: 'insideLeft' }} />
                         )}
                         {technicals?.nearest_resistance && (
-                             <ReferenceLine yAxisId="right" y={technicals.nearest_resistance} stroke="#ef4444" strokeDasharray="5 5" label={{ value: 'RES', fill: '#ef4444', fontSize: 10, position: 'insideLeft' }} />
+                             <ReferenceLine yAxisId="right" y={technicals.nearest_resistance} stroke="var(--loss)" strokeDasharray="5 5" label={{ value: 'RES', fill: 'var(--loss)', fontSize: 10, position: 'insideLeft' }} />
                         )}
 
                         <Area 
                             yAxisId="right"
                             type="monotone" 
                             dataKey="price" 
-                            stroke="#3b82f6" 
-                            strokeWidth={2}
+                            stroke="var(--stamp)" 
+                            strokeWidth={1.5}
                             fillOpacity={1} 
                             fill="url(#colorPrice)" 
                         />

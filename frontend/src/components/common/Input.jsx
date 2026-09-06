@@ -1,27 +1,27 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 
-const Input = React.forwardRef(({ className, type, icon, ...props }, ref) => {
-  return (
-    <div className="relative w-full">
-        {icon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                {icon}
-            </div>
-        )}
-      <input
-        type={type}
-        className={cn(
-          'flex h-10 w-full rounded-lg border border-input bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 transition-all focus:bg-background',
-          icon && "pl-10",
-          className
-        )}
-        ref={ref}
-        {...props}
-      />
-    </div>
-  );
-});
+/**
+ * A field on the form: ruled underneath, not boxed in a rounded well.
+ */
+const Input = React.forwardRef(({ className, icon: Icon, ...props }, ref) => (
+  <div className="relative flex items-center">
+    {Icon && (
+      <Icon className="absolute left-0 w-4 h-4 text-[var(--ink-faint)] pointer-events-none" />
+    )}
+    <input
+      ref={ref}
+      className={cn(
+        'w-full bg-transparent border-0 border-b border-[var(--rule-strong)] py-2 text-sm text-[var(--ink)]',
+        'focus:outline-none focus:border-[var(--stamp)] focus:ring-0',
+        'disabled:opacity-40',
+        Icon ? 'pl-6' : 'pl-0',
+        className
+      )}
+      {...props}
+    />
+  </div>
+));
 Input.displayName = 'Input';
 
 export { Input };

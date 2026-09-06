@@ -1,29 +1,30 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 
-const Badge = ({ className, variant = 'default', children, ...props }) => {
-  const variants = {
-    default: 'bg-primary/10 text-primary border-primary/20',
-    secondary: 'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-    destructive: 'bg-destructive/10 text-destructive border-destructive/20',
-    outline: 'text-foreground border border-border',
-    success: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    warning: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    neutral: 'bg-slate-800 text-slate-400 border-slate-700'
-  };
-
-  return (
-    <div
-      className={cn(
-        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-        variants[variant],
-        className
-      )}
-      {...props}
-    >
-      {children}
-    </div>
-  );
+/**
+ * A field mark on the form: boxed, tracked, upper. Not a pill — nothing in a
+ * printed document has a rounded end.
+ */
+const VARIANTS = {
+  default: 'border-[var(--rule-strong)] text-[var(--ink)]',
+  secondary: 'border-[var(--rule)] text-[var(--ink-soft)]',
+  outline: 'border-[var(--rule)] text-[var(--ink-soft)]',
+  neutral: 'border-[var(--rule)] text-[var(--ink-soft)]',
+  success: 'border-[var(--gain)] text-[var(--gain)] bg-[var(--gain-wash)]',
+  destructive: 'border-[var(--loss)] text-[var(--loss)] bg-[var(--loss-wash)]',
+  warning: 'border-[var(--stamp)] text-[var(--stamp)] bg-[var(--stamp-soft)]',
+  stamp: 'border-[var(--stamp)] text-[var(--stamp)] bg-[var(--stamp-soft)]',
 };
+
+const Badge = ({ className, variant = 'default', ...props }) => (
+  <span
+    className={cn(
+      'inline-flex items-center gap-1 border px-1.5 py-0.5 font-[family-name:var(--font-narrow)] text-[0.625rem] font-semibold uppercase tracking-[0.11em] leading-none',
+      VARIANTS[variant] || VARIANTS.default,
+      className
+    )}
+    {...props}
+  />
+);
 
 export { Badge };

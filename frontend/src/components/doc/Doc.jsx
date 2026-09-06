@@ -1,0 +1,181 @@
+import React from 'react';
+import { cn } from '../../utils/cn';
+import { formatSigned, formatSignedPercent } from '../../utils/formatters';
+
+/**
+ * The contract note's building blocks. Everything in the app is assembled from
+ * these, so a page never invents its own container language.
+ */
+
+/** A titled sheet: ruled band, printed title, optional right-hand furniture. */
+export const Sheet = ({ title, meta, actions, children, className, bodyClassName }) => (
+  <section className={cn('sheet', className)}>
+    {(title || actions || meta) && (
+      <header className="flex items-baseline justify-between gap-3 px-4 py-2.5 border-b border-[var(--rule)] bg-[var(--paper-sunk)]">
+        <div className="flex items-baseline gap-3 min-w-0">
+          {title && <h2 className="field-label text-[var(--ink)] truncate">{title}</h2>}
+          {meta && <span className="doc-meta shrink-0">{meta}</span>}
+        </div>
+        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      </header>
+    )}
+    <div className={cn('p-4', bodyClassName)}>{children}</div>
+  </section>
+);
+
+/** A field: the label above, the value below, as an official form prints it. */
+export const Field = ({ label, value, tone, className }) => (
+  <div className={cn('min-w-0', className)}>
+    <div className="field-label mb-1">{label}</div>
+    <div
+      className={cn(
+        'figure-md text-sm truncate',
+        tone === 'up' && 'text-up',
+        tone === 'down' && 'text-down',
+        tone === 'stamp' && 'text-[var(--stamp)]'
+      )}
+    >
+      {value}
+    </div>
+  </div>
+);
+
+/**
+ * A signed money figure. Sign, colour and magnitude agree; a zero is neither
+ * green nor red, because a flat day is not a win.
+ */
+export const Money = ({ value, className, percent = false, size = 'md' }) => {
+  const numeric = Number(value);
+  const known = value !== null && value !== undefined && !Number.isNaN(numeric);
+  const tone = !known || numeric === 0 ? '' : numeric > 0 ? 'text-up' : 'text-down';
+  const text = percent ? formatSignedPercent(value) : formatSigned(value);
+  return (
+    <span
+      className={cn(
+        size === 'lg' ? 'figure-lg' : 'figure-md',
+        size === 'md' && 'text-base',
+        tone,
+        className
+      )}
+    >
+      {known ? text : '—'}
+    </span>
+  );
+};
+
+/** A ruled table. Columns are declared once so every table aligns identically. */
+export const Statement = ({ columns, children, className }) => (
+  <div className={cn('overflow-x-auto -mx-4 px-4', className)}>
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="border-b border-[var(--rule-strong)]">
+          {columns.map((column) => (
+            <th
+              key={column.key}
+              scope="col"
+              className={cn(
+                'field-label py-2 whitespace-nowrap',
+                column.align === 'right' ? 'text-right' : 'text-left'
+              )}
+            >
+              {column.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>{children}</tbody>
+    </table>
+  </div>
+);
+
+export const Row = ({ children, className, ...props }) => (
+  <tr
+    className={cn('border-b border-[var(--rule)] last:border-b-0', className)}
+    {...props}
+  >
+    {children}
+  </tr>
+);
+
+export const Cell = ({ align, mono, className, children, ...props }) => (
+  <td
+    className={cn(
+      'py-2.5 align-middle',
+      align === 'right' ? 'text-right' : 'text-left',
+      mono && 'figure-md',
+      className
+    )}
+    {...props}
+  >
+    {children}
+  </td>
+);
+
+/** The closing line of a table: a double rule, the way a net is printed. */
+export const NetLine = ({ label, children, className }) => (
+  <div
+    className={cn(
+      'rule-net mt-3 pt-3 flex items-baseline justify-between gap-4',
+      className
+    )}
+  >
+    <span className="field-label">{label}</span>
+    <span>{children}</span>
+  </div>
+);
+
+/**
+ * The rubber stamp. The one authored motion in this world: a decision lands
+ * the way a stamp lands. Used only where something has actually been decided.
+ */
+export const Stamp = ({ label, tone = 'stamp', animate = false, className }) => {
+  const colour =
+    tone === 'gain' ? 'var(--gain)' : tone === 'loss' ? 'var(--loss)' : 'var(--stamp)';
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center justify-center px-2.5 py-1 border-2 select-none',
+        'font-[family-name:var(--font-narrow)] text-[0.6875rem] font-bold uppercase tracking-[0.16em]',
+        animate && 'stamp-land',
+        className
+      )}
+      style={{
+        color: colour,
+        borderColor: colour,
+        opacity: 0.85,
+        transform: 'rotate(-4deg)',
+      }}
+    >
+      {label}
+    </span>
+  );
+};
+
+/** A dashed tear between stacked regions of one continuous form. */
+export const Perforation = ({ className }) => (
+  <div className={cn('perforated my-4', className)} aria-hidden="true" />
+);
+
+export const Empty = ({ title, detail, action, className }) => (
+  <div
+    className={cn(
+      'py-10 px-4 text-center border border-dashed border-[var(--rule)]',
+      className
+    )}
+  >
+    <p className="field-label text-[var(--ink)]">{title}</p>
+    {detail && (
+      <p className="mt-2 text-sm text-[var(--ink-soft)] max-w-sm mx-auto">{detail}</p>
+    )}
+    {action && <div className="mt-4 flex justify-center">{action}</div>}
+  </div>
+);
+
+/** Ruled placeholder lines: an unfilled form, not a grey blob. */
+export const Ruling = ({ rows = 3, className }) => (
+  <div className={cn('space-y-3', className)} aria-hidden="true">
+    {Array.from({ length: rows }).map((_, index) => (
+      <div key={index} className="h-3 border-b border-[var(--rule)]" />
+    ))}
+  </div>
+);
