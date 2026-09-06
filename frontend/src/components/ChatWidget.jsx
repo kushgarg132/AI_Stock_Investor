@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Bot, User, Loader2, Sparkles, Minimize2, Maximize2 } from 'lucide-react';
-import api from '../utils/api';
+import api, { AUTH_TOKEN_STORAGE_KEY } from '../utils/api';
 import { clsx } from 'clsx';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -38,16 +38,24 @@ const ChatWidget = () => {
       // Build history
       const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }));
       
+      const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
       const response = await fetch(`${api.defaults.baseURL}/chat/message`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           message: userMsg,
           history: history
         })
       });
+
+      if (response.status === 401 || response.status === 403) {
+        localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+        window.location.assign('/login');
+        return;
+      }
 
       if (!response.ok) throw new Error(response.statusText);
 
