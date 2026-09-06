@@ -61,7 +61,7 @@ async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
         day_change_percent = (day_change / previous_close) * 100 if previous_close else 0
 
         company_info = CompanyInfo(
-            symbol=ticker_symbol.upper(),
+            symbol=instrument.tradingsymbol.upper(),
             name=instrument.name,
             current_price=current_price,
             previous_close=previous_close,
@@ -79,7 +79,7 @@ async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
     day_change_percent = (day_change / previous_close) * 100 if previous_close else 0
 
     company_info = CompanyInfo(
-        symbol=ticker_symbol.upper(),
+        symbol=instrument.tradingsymbol.upper(),
         name=info.get("longName") or info.get("shortName") or instrument.name,
         sector=info.get("sector"),
         industry=info.get("industry"),
