@@ -30,6 +30,7 @@ from backend.data.providers.yfinance_provider import YFinanceProvider
 from backend.data.feeds.polling_live import PollingLiveFeed
 from backend.engine.execution.simulated import SimulatedExecutionClient
 from backend.engine.persistence import LedgerStore
+from backend.ws.hub import hub
 from backend.ws.publish import publisher_for
 from backend.engine.portfolio import Portfolio
 from backend.engine.runner import run
@@ -175,6 +176,7 @@ async def start_trading(
         params=req.model_dump(exclude={"universe"}),
     )
     start_background_run(coro, run_id=run_id, runs=runs)
+    await hub.publish(user.id, "runs", "started", await runs.get(run_id))
     logger.info("started paper-trading run %s (mode=%s, %d instruments)", run_id, req.mode, len(instruments))
     return StartResponse(run_id=run_id)
 
@@ -193,6 +195,7 @@ async def stop_trading(
     if not stopped:
         raise HTTPException(status_code=404, detail=f"No running trading run {req.run_id!r}")
     await runs.mark_stopped(req.run_id)
+    await hub.publish(user.id, "runs", "stopped", await runs.get(req.run_id))
     return {"run_id": req.run_id, "stopped": True}
 
 

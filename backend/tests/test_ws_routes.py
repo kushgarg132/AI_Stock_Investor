@@ -133,3 +133,70 @@ def test_an_unknown_action_is_reported_not_fatal(client):
 
         socket.send_json({"action": "subscribe", "topics": ["pnl"]})
         assert socket.receive_json()["event"] == "subscribed", "socket stays usable"
+
+
+# ---------------------------------------------------------------------------
+# Streamed analysis and chat, which replace the old SSE endpoints
+# ---------------------------------------------------------------------------
+
+def test_analysis_streams_back_on_its_own_topic(client, monkeypatch):
+    class _Report:
+        def model_dump(self):
+            return {"symbol": "RELIANCE", "thesis": "Fine business."}
+
+    class _Agent:
+        async def run(self, symbol):
+            return _Report()
+
+    monkeypatch.setattr("backend.research.graph.ResearchAgent", lambda: _Agent())
+
+    with client.websocket_connect(
+        "/api/v1/ws?token=good-token", headers={"origin": ALLOWED_ORIGIN}
+    ) as socket:
+        socket.receive_json()
+        socket.send_json({"action": "analyze", "symbol": "RELIANCE", "req_id": "r1"})
+
+        started = socket.receive_json()
+        assert started == {**started, "topic": "analysis:r1", "event": "started"}
+        report = socket.receive_json()
+        assert report["event"] == "report"
+        assert report["data"]["thesis"] == "Fine business."
+
+
+def test_chat_streams_thinking_then_content_then_done(client, monkeypatch):
+    class _ChatAgent:
+        async def stream_message(self, message, history):
+            yield {"type": "thinking", "data": "looking it up"}
+            yield {"type": "content", "data": "Reliance is a conglomerate."}
+
+    monkeypatch.setattr("backend.components.chat.agent.chat_agent", _ChatAgent())
+
+    with client.websocket_connect(
+        "/api/v1/ws?token=good-token", headers={"origin": ALLOWED_ORIGIN}
+    ) as socket:
+        socket.receive_json()
+        socket.send_json({"action": "chat", "message": "what is reliance", "req_id": "c1"})
+
+        events = [socket.receive_json() for _ in range(3)]
+
+    assert [e["event"] for e in events] == ["thinking", "content", "done"]
+    assert all(e["topic"] == "chat:c1" for e in events)
+
+
+def test_an_analysis_failure_is_reported_on_the_topic(client, monkeypatch):
+    class _Agent:
+        async def run(self, symbol):
+            raise RuntimeError("provider down")
+
+    monkeypatch.setattr("backend.research.graph.ResearchAgent", lambda: _Agent())
+
+    with client.websocket_connect(
+        "/api/v1/ws?token=good-token", headers={"origin": ALLOWED_ORIGIN}
+    ) as socket:
+        socket.receive_json()
+        socket.send_json({"action": "analyze", "symbol": "RELIANCE", "req_id": "r2"})
+        socket.receive_json()  # started
+
+        failure = socket.receive_json()
+        assert failure["event"] == "error"
+        assert "provider down" in failure["data"]["detail"]

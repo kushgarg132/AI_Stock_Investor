@@ -18,6 +18,7 @@ Two things differ from the HTTP routes and both are deliberate:
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -100,7 +101,13 @@ async def _handle(websocket: WebSocket, connection, message: dict) -> None:
     action = message.get("action")
     topics = message.get("topics") or []
 
-    if action == "subscribe":
+    if action == "analyze":
+        asyncio.create_task(_stream_analysis(connection, message.get("symbol", ""), message.get("req_id", "")))
+    elif action == "chat":
+        asyncio.create_task(_stream_chat(
+            connection, message.get("message", ""), message.get("history") or [], message.get("req_id", ""),
+        ))
+    elif action == "subscribe":
         connection.subscribe(topics)
         await websocket.send_json({"topic": "system", "event": "subscribed", "data": {"topics": sorted(connection.topics)}})
     elif action == "unsubscribe":
@@ -112,3 +119,52 @@ async def _handle(websocket: WebSocket, connection, message: dict) -> None:
         await websocket.send_json({
             "topic": "system", "event": "error", "data": {"detail": f"Unknown action {action!r}"},
         })
+
+
+# ---------------------------------------------------------------------------
+# Streaming work. These write into the connection's own queue rather than the
+# socket: the pump task is the only writer to the WebSocket itself, so two
+# concurrent streams can't interleave halfway through a frame.
+# ---------------------------------------------------------------------------
+
+def _frame(topic: str, event: str, data) -> dict:
+    return {
+        "topic": topic,
+        "event": event,
+        "data": data,
+        "ts": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+async def _stream_analysis(connection, symbol: str, req_id: str) -> None:
+    topic = f"analysis:{req_id}"
+    if not symbol:
+        connection.offer(_frame(topic, "error", {"detail": "symbol is required"}))
+        return
+
+    from backend.research.graph import ResearchAgent
+
+    connection.offer(_frame(topic, "started", {"symbol": symbol}))
+    try:
+        report = await ResearchAgent().run(symbol)
+        connection.offer(_frame(topic, "report", report.model_dump()))
+    except Exception as exc:
+        logger.warning("analysis of %s failed: %s", symbol, exc)
+        connection.offer(_frame(topic, "error", {"detail": str(exc)}))
+
+
+async def _stream_chat(connection, message: str, history: list, req_id: str) -> None:
+    topic = f"chat:{req_id}"
+    if not message:
+        connection.offer(_frame(topic, "error", {"detail": "message is required"}))
+        return
+
+    from backend.components.chat.agent import chat_agent
+
+    try:
+        async for event in chat_agent.stream_message(message, history):
+            connection.offer(_frame(topic, event["type"], {"text": event["data"]}))
+        connection.offer(_frame(topic, "done", {}))
+    except Exception as exc:
+        logger.warning("chat stream failed: %s", exc)
+        connection.offer(_frame(topic, "error", {"detail": str(exc)}))
