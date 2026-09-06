@@ -17,34 +17,50 @@ INDICES = {
 
 
 # NIFTY 50 Symbols
-async def fetch_ticker_data(symbol: str, name: str) -> Dict[str, Any]:
+def _fetch_ticker_data_sync(symbol: str, name: str) -> Dict[str, Any]:
+    ticker = yf.Ticker(symbol)
+
+    # fast_info can raise (some symbols lack a currentTradingPeriod) instead
+    # of just returning None, so the history() fallback has to be reachable
+    # on exception too, not only on a None price.
+    price = prev_close = None
     try:
-        ticker = yf.Ticker(symbol)
-        # Fast fetch using fast_info or history
-        # fast_info is better for latest price
         price = ticker.fast_info.last_price
         prev_close = ticker.fast_info.previous_close
-        
-        if price is None or prev_close is None:
-             # Fallback to history
-             hist = ticker.history(period="2d")
-             if len(hist) >= 1:
-                 price = hist['Close'].iloc[-1]
-                 prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else price
-        
-        if price is None:
-            return None
+    except Exception:
+        pass
 
-        change = price - prev_close
-        percent = (change / prev_close) * 100
-        
-        return {
-            "name": name,
-            "symbol": symbol,
-            "value": price,
-            "change": change,
-            "percent": percent
-        }
+    if price is None or prev_close is None:
+        hist = ticker.history(period="2d")
+        if len(hist) >= 1:
+            price = hist['Close'].iloc[-1]
+            prev_close = hist['Close'].iloc[-2] if len(hist) > 1 else price
+
+    if price is None:
+        return None
+
+    change = price - prev_close
+    percent = (change / prev_close) * 100
+
+    return {
+        "name": name,
+        "symbol": symbol,
+        "value": price,
+        "change": change,
+        "percent": percent
+    }
+
+
+async def fetch_ticker_data(symbol: str, name: str) -> Dict[str, Any]:
+    # yfinance is a synchronous/blocking HTTP client. Called directly inside
+    # an async def, asyncio.gather() over these does NOT run them
+    # concurrently -- each call blocks the single event loop in turn, which
+    # on this single-worker uvicorn process stalls every other in-flight
+    # request (other API calls, the websocket) for as long as this endpoint's
+    # symbol list takes to fetch serially. to_thread moves the blocking work
+    # off the loop so gather() actually parallelizes it.
+    try:
+        return await asyncio.to_thread(_fetch_ticker_data_sync, symbol, name)
     except Exception as e:
         logger.error(f"Error fetching {symbol}: {e}")
         return None

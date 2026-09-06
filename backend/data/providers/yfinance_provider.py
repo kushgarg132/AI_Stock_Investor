@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 
@@ -27,8 +28,11 @@ class YFinanceProvider:
         ticker_symbol = self._ticker_symbol(instrument)
         logger.info(f"Fetching price history for {ticker_symbol}, period: {period}, interval: {interval}")
 
-        ticker = yf.Ticker(ticker_symbol)
-        df = ticker.history(period=period, interval=interval)
+        # yfinance is a blocking HTTP client; calling it straight from an
+        # async def runs it on the one event loop this (single-worker)
+        # process has, freezing every other in-flight request for as long as
+        # the fetch takes. to_thread moves it off the loop.
+        df = await asyncio.to_thread(lambda: yf.Ticker(ticker_symbol).history(period=period, interval=interval))
 
         if df.empty:
             raise ValueError(f"No price data found for {ticker_symbol}")
@@ -60,8 +64,7 @@ class YFinanceProvider:
         """Last price, ohlc, volume -- cheap enough to build from a short
         history pull rather than a separate .info network call."""
         ticker_symbol = self._ticker_symbol(instrument)
-        ticker = yf.Ticker(ticker_symbol)
-        df = ticker.history(period="5d", interval="1d")
+        df = await asyncio.to_thread(lambda: yf.Ticker(ticker_symbol).history(period="5d", interval="1d"))
 
         if df.empty:
             raise ValueError(f"No quote data found for {ticker_symbol}")
@@ -83,13 +86,13 @@ class YFinanceProvider:
         for callers that need company fundamentals, not just OHLCV."""
         ticker_symbol = self._ticker_symbol(instrument)
         ticker = yf.Ticker(ticker_symbol)
-        info = ticker.info
+        info = await asyncio.to_thread(lambda: ticker.info)
 
         current_price_val = info.get("regularMarketPrice") or info.get("currentPrice")
         if info and current_price_val is not None:
             return {**info, "_ticker_symbol": ticker_symbol}
 
-        hist = ticker.history(period="5d")
+        hist = await asyncio.to_thread(lambda: ticker.history(period="5d"))
         if hist.empty:
             raise ValueError(f"No stock info found for {ticker_symbol}")
 
