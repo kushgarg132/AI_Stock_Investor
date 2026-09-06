@@ -14,12 +14,15 @@ to that closed range itself. Real intraday period limits on the actual
 yfinance API aren't exercised here since tests use a fake provider.
 """
 
+import logging
 from datetime import datetime
 from typing import AsyncIterator
 
 from backend.core.models import Bar
 from backend.data.protocols import MarketDataProvider
 from backend.instruments.models import Instrument
+
+logger = logging.getLogger(__name__)
 
 
 def _naive(dt: datetime) -> datetime:
@@ -47,7 +50,14 @@ class HistoricalFeed:
     async def __aiter__(self) -> AsyncIterator[Bar]:
         bars: list[Bar] = []
         for instrument in self._instruments:
-            candles = await self._provider.history(instrument, self._timeframe, "max")
+            # A real universe has 80+ symbols; yfinance returning nothing for
+            # one delisted/renamed one is routine, not exceptional -- it must
+            # not discard every other instrument's history in the same batch.
+            try:
+                candles = await self._provider.history(instrument, self._timeframe, "max")
+            except Exception as exc:
+                logger.warning("skipping %s: %s", instrument.tradingsymbol, exc)
+                continue
             for candle in candles:
                 if not (_naive(self._start) <= _naive(candle.timestamp) <= _naive(self._end)):
                     continue
