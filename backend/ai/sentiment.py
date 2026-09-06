@@ -18,11 +18,16 @@ logger = logging.getLogger(__name__)
 
 async def get_cached_sentiment(symbol: str, redis) -> Optional[float]:
     """Reads a Redis-cached sentiment score. Returns None (never blocks on the
-    LLM) if no fresh value is cached -- score_intent above already treats None
-    as 0.0/neutral, which is a safe default: an engine loop must never await an
-    LLM round-trip synchronously."""
+    LLM, never raises) if no fresh value is cached -- score_intent above
+    already treats None as 0.0/neutral, which is a safe default: an engine
+    loop must never let an optional cache dependency take it down, whether
+    that's a cache miss or Redis being unreachable outright."""
     key = f"sentiment:{symbol}"
-    val = await redis.get(key)
+    try:
+        val = await redis.get(key)
+    except Exception as exc:
+        logger.warning("sentiment cache unavailable for %s: %s", symbol, exc)
+        return None
     return float(val) if val is not None else None
 
 

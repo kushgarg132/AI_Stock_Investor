@@ -21,3 +21,16 @@ async def test_cache_hit_returns_float():
     redis.get.return_value = "0.42"
     result = await get_cached_sentiment("RELIANCE", redis)
     assert result == pytest.approx(0.42)
+
+
+async def test_a_redis_connection_failure_returns_none_without_raising():
+    """A DNS failure, a dropped connection, an Upstash outage -- none of it
+    may reach the caller. score_intent already treats None as neutral; that
+    is the entire reason this function exists, and a raised exception here
+    used to take the whole engine loop (and every scan) down with it."""
+    redis = AsyncMock()
+    redis.get.side_effect = OSError("Name or service not known")
+
+    result = await get_cached_sentiment("RELIANCE", redis)
+
+    assert result is None
