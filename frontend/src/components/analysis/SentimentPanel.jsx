@@ -13,7 +13,7 @@ const read = (score) => {
   return { label: 'Neutral', tone: 'text-[var(--ink-soft)]' };
 };
 
-const SentimentPanel = ({ score, summary, sentiment }) => {
+const SentimentPanel = ({ score, summary, sentiment, thesis }) => {
   const value = Number(score) || 0;
   const reading = read(value);
   const position = ((value + 1) / 2) * 100;
@@ -64,6 +64,13 @@ const SentimentPanel = ({ score, summary, sentiment }) => {
         <p className="mt-3 pt-3 border-t border-[var(--rule)] text-sm text-[var(--ink-soft)] leading-relaxed">
           {summary}
         </p>
+      )}
+
+      {thesis && (
+        <div className="mt-3 pt-3 border-t border-[var(--rule)]">
+          <p className="field-label mb-1.5">Thesis</p>
+          <p className="text-sm text-[var(--ink-soft)] leading-relaxed">{thesis}</p>
+        </div>
       )}
     </Sheet>
   );

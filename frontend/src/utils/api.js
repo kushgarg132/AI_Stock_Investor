@@ -99,6 +99,7 @@ export const AUTH_TOKEN_STORAGE_KEY = TOKEN_STORAGE_KEY;
 
 export const endpoints = {
   analyze: (symbol) => `/agents/analyze/${symbol}`,
+  quickAnalyze: (symbol) => `/agents/quick-analyze/${symbol}`,
   scanner: '/scanner/bullish',
   stockInfo: (symbol) => `/stock_info/${symbol}`,
   marketIndices: '/market/indices',

@@ -182,7 +182,8 @@ class Stream {
    */
   request(action, payload, onEvent) {
     const reqId = Math.random().toString(36).slice(2, 10);
-    const topic = `${action === 'chat' ? 'chat' : 'analysis'}:${reqId}`;
+    const topicPrefix = { chat: 'chat', quick_analyze: 'quick_analysis' }[action] || 'analysis';
+    const topic = `${topicPrefix}:${reqId}`;
     const unsubscribe = this.subscribe(topic, (message) => {
       onEvent(message);
       if (message.event === 'done' || message.event === 'error' || message.event === 'report') {

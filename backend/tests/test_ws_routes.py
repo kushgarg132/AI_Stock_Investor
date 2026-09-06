@@ -9,6 +9,7 @@ origin check.
 """
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -161,6 +162,41 @@ def test_analysis_streams_back_on_its_own_topic(client, monkeypatch):
         report = socket.receive_json()
         assert report["event"] == "report"
         assert report["data"]["thesis"] == "Fine business."
+
+
+def test_quick_analysis_streams_back_on_its_own_topic(client, monkeypatch):
+    class _Snapshot:
+        def model_dump(self):
+            return {"symbol": "RELIANCE", "company_info": {"symbol": "RELIANCE"}}
+
+    monkeypatch.setattr("backend.research.quick.quick_analysis", AsyncMock(return_value=_Snapshot()))
+
+    with client.websocket_connect(
+        "/api/v1/ws?token=good-token", headers={"origin": ALLOWED_ORIGIN}
+    ) as socket:
+        socket.receive_json()
+        socket.send_json({"action": "quick_analyze", "symbol": "RELIANCE", "req_id": "q1"})
+
+        report = socket.receive_json()
+        assert report == {**report, "topic": "quick_analysis:q1", "event": "report"}
+        assert report["data"]["symbol"] == "RELIANCE"
+
+
+def test_a_quick_analysis_failure_is_reported_on_the_topic(client, monkeypatch):
+    monkeypatch.setattr(
+        "backend.research.quick.quick_analysis", AsyncMock(side_effect=RuntimeError("provider down"))
+    )
+
+    with client.websocket_connect(
+        "/api/v1/ws?token=good-token", headers={"origin": ALLOWED_ORIGIN}
+    ) as socket:
+        socket.receive_json()
+        socket.send_json({"action": "quick_analyze", "symbol": "RELIANCE", "req_id": "q2"})
+
+        failure = socket.receive_json()
+        assert failure["topic"] == "quick_analysis:q2"
+        assert failure["event"] == "error"
+        assert "provider down" in failure["data"]["detail"]
 
 
 def test_chat_streams_thinking_then_content_then_done(client, monkeypatch):

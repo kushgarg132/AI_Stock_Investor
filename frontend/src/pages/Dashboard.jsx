@@ -32,9 +32,16 @@ const Dashboard = () => {
   const [tradesError, setTradesError] = useState(null);
   const [pending, setPending] = useState([]);
 
-  const [analysis, setAnalysis] = useState(null);
-  const [analysing, setAnalysing] = useState(false);
-  const [analysisError, setAnalysisError] = useState(null);
+  const [enquirySymbol, setEnquirySymbol] = useState(null);
+
+  const [quick, setQuick] = useState(null);
+  const [quickLoading, setQuickLoading] = useState(false);
+  const [quickError, setQuickError] = useState(null);
+
+  const [ai, setAi] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState(null);
+  const [aiRequested, setAiRequested] = useState(false);
 
   useEffect(() => {
     api
@@ -70,29 +77,62 @@ const Dashboard = () => {
     }
   });
 
+  // Overview (quote, fundamentals, technicals) has no LLM call and is what a
+  // click should show immediately. AI Analysis (news/sentiment/thesis) makes
+  // several sequential LLM calls -- requestAi() only fires it once the tab
+  // is actually opened, so it's never on the critical path of opening a stock.
   const analyse = (symbol) => {
-    setAnalysing(true);
-    setAnalysisError(null);
-    setAnalysis(null);
+    setEnquirySymbol(symbol);
+    setQuickLoading(true);
+    setQuickError(null);
+    setQuick(null);
+    setAi(null);
+    setAiError(null);
+    setAiRequested(false);
 
-    const request = stream.request('analyze', { symbol }, (message) => {
+    const request = stream.request('quick_analyze', { symbol }, (message) => {
       if (message.event === 'report') {
-        setAnalysis(message.data);
-        setAnalysing(false);
+        setQuick(message.data);
+        setQuickLoading(false);
       } else if (message.event === 'error') {
-        setAnalysisError(message.data.detail);
-        setAnalysing(false);
+        setQuickError(message.data.detail);
+        setQuickLoading(false);
       }
     });
 
     // The socket may not be up (first paint, a dropped connection); the HTTP
-    // route is the same analysis, just without the progress.
+    // route is the same lookup, just without the progress.
     if (!request.ok) {
       api
-        .post(endpoints.analyze(symbol))
-        .then((res) => setAnalysis(res.data))
-        .catch((err) => setAnalysisError(err?.response?.data?.detail || 'Analysis failed'))
-        .finally(() => setAnalysing(false));
+        .post(endpoints.quickAnalyze(symbol))
+        .then((res) => setQuick(res.data))
+        .catch((err) => setQuickError(err?.response?.data?.detail || 'Could not load'))
+        .finally(() => setQuickLoading(false));
+    }
+  };
+
+  const requestAi = () => {
+    if (aiRequested || !enquirySymbol) return;
+    setAiRequested(true);
+    setAiLoading(true);
+    setAiError(null);
+
+    const request = stream.request('analyze', { symbol: enquirySymbol }, (message) => {
+      if (message.event === 'report') {
+        setAi(message.data);
+        setAiLoading(false);
+      } else if (message.event === 'error') {
+        setAiError(message.data.detail);
+        setAiLoading(false);
+      }
+    });
+
+    if (!request.ok) {
+      api
+        .post(endpoints.analyze(enquirySymbol))
+        .then((res) => setAi(res.data))
+        .catch((err) => setAiError(err?.response?.data?.detail || 'Analysis failed'))
+        .finally(() => setAiLoading(false));
     }
   };
 
@@ -109,39 +149,46 @@ const Dashboard = () => {
     <Layout>
       <div className="space-y-4">
         <Sheet bodyClassName="p-4">
-          <SmartSearch onSearch={analyse} isLoading={analysing} />
+          <SmartSearch onSearch={analyse} isLoading={quickLoading} />
         </Sheet>
 
-        {analysing && (
+        {quickLoading && (
           <Sheet title="Enquiry in progress">
             <div className="flex items-center gap-3 py-6 justify-center text-[var(--ink-soft)]">
               <Loader2 className="w-4 h-4 animate-spin text-[var(--stamp)]" />
-              <span className="text-sm">Reading fundamentals, news and technicals…</span>
+              <span className="text-sm">Reading fundamentals and technicals…</span>
             </div>
           </Sheet>
         )}
 
-        {analysisError && (
+        {quickError && (
           <Sheet title="Enquiry failed">
             <Empty
-              title={analysisError}
+              title={quickError}
               detail="The scrip may not be in the instrument master, or the data provider is unreachable."
             />
           </Sheet>
         )}
 
-        {analysis && !analysing && (
+        {quick && !quickLoading && (
           <div className="space-y-4">
             <div className="flex justify-end">
-              <Button variant="ghost" size="sm" onClick={() => setAnalysis(null)}>
+              <Button variant="ghost" size="sm" onClick={() => setQuick(null)}>
                 Back to statement
               </Button>
             </div>
-            <AnalysisCard data={analysis} />
+            <AnalysisCard
+              quick={quick}
+              ai={ai}
+              aiLoading={aiLoading}
+              aiError={aiError}
+              aiRequested={aiRequested}
+              onOpenAiTab={requestAi}
+            />
           </div>
         )}
 
-        {!analysis && !analysing && (
+        {!quick && !quickLoading && (
           <>
             {pending.length > 0 && (
               <Link

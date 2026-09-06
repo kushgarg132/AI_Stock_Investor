@@ -103,6 +103,8 @@ async def _handle(websocket: WebSocket, connection, message: dict) -> None:
 
     if action == "analyze":
         asyncio.create_task(_stream_analysis(connection, message.get("symbol", ""), message.get("req_id", "")))
+    elif action == "quick_analyze":
+        asyncio.create_task(_stream_quick_analysis(connection, message.get("symbol", ""), message.get("req_id", "")))
     elif action == "chat":
         asyncio.create_task(_stream_chat(
             connection, message.get("message", ""), message.get("history") or [], message.get("req_id", ""),
@@ -150,6 +152,25 @@ async def _stream_analysis(connection, symbol: str, req_id: str) -> None:
         connection.offer(_frame(topic, "report", report.model_dump()))
     except Exception as exc:
         logger.warning("analysis of %s failed: %s", symbol, exc)
+        connection.offer(_frame(topic, "error", {"detail": str(exc)}))
+
+
+async def _stream_quick_analysis(connection, symbol: str, req_id: str) -> None:
+    """The non-AI half of a stock enquiry: quote, fundamentals, price-based
+    technicals. No LLM call, so this is what renders while (or instead of)
+    the separate `analyze` action's AI report."""
+    topic = f"quick_analysis:{req_id}"
+    if not symbol:
+        connection.offer(_frame(topic, "error", {"detail": "symbol is required"}))
+        return
+
+    from backend.research.quick import quick_analysis
+
+    try:
+        snapshot = await quick_analysis(symbol)
+        connection.offer(_frame(topic, "report", snapshot.model_dump()))
+    except Exception as exc:
+        logger.warning("quick analysis of %s failed: %s", symbol, exc)
         connection.offer(_frame(topic, "error", {"detail": str(exc)}))
 
 

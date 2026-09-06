@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Building2, BookmarkPlus, Check } from 'lucide-react';
+import { Building2, BookmarkPlus, Check, Loader2 } from 'lucide-react';
 import api, { endpoints } from '../utils/api';
 import { Badge } from './common/Badge';
 import { Button } from './common/Button';
-import { Sheet, Field, Statement, Row, Cell } from './doc/Doc';
+import { Sheet, Field, Statement, Row, Cell, Empty } from './doc/Doc';
 import {
   formatCurrency,
   formatCompactNumber,
@@ -14,36 +14,40 @@ import { cn } from '../utils/cn';
 
 import TradingChart from './stock/TradingChart';
 import SentimentPanel from './analysis/SentimentPanel';
-import RiskPanel from './analysis/RiskPanel';
 import TechnicalPanel from './analysis/TechnicalPanel';
 import NewsFeed from './analysis/NewsFeed';
 import EventsList from './analysis/EventsList';
 
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'ai', label: 'AI Analysis' },
+];
+
 /**
  * A scrip enquiry, printed as a section of the note: the quotation at the
- * head, then fundamentals as a ruled schedule, then the analytical panels.
+ * head, then a tab split -- Overview is the quote, fundamentals and
+ * technicals (`quick`, no LLM call, renders as soon as the click lands), AI
+ * Analysis is the news/sentiment/thesis report (`ai`), which the parent only
+ * starts fetching the first time this tab is opened. Splitting them is the
+ * whole point: the AI pipeline makes several sequential LLM calls and used
+ * to sit in front of everything else a stock click needed to show.
  */
-const AnalysisCard = ({ data }) => {
+const AnalysisCard = ({ quick, ai, aiLoading, aiError, aiRequested, onOpenAiTab }) => {
+  const [tab, setTab] = useState('overview');
   const [watched, setWatched] = useState(false);
   const [watchError, setWatchError] = useState(null);
 
-  if (!data) return null;
+  if (!quick) return null;
 
-  const {
-    company_info: company,
-    price_data: priceData,
-    technical_analysis: technicals,
-    sentiment_score: sentimentScore,
-    analyst_summary: analystSummary,
-    final_signal: finalSignal,
-    all_signals: allSignals,
-    indicators,
-    risk,
-    sentiment,
-  } = data;
-
+  const company = quick.company_info;
+  const technicals = quick.technical_analysis;
   const change = company?.day_change_percent || 0;
   const currency = company?.currency || 'INR';
+
+  const openTab = (id) => {
+    setTab(id);
+    if (id === 'ai' && !aiRequested) onOpenAiTab();
+  };
 
   const addToWatchlist = async () => {
     setWatchError(null);
@@ -112,42 +116,100 @@ const AnalysisCard = ({ data }) => {
         {watchError && <p className="mt-2 text-sm text-[var(--loss)]">{watchError}</p>}
       </Sheet>
 
-      <Sheet title="Price">
-        <TradingChart data={priceData} technicals={technicals} currency={currency} />
-      </Sheet>
-
-      <Sheet title="Schedule of particulars">
-        <Statement
-          columns={[
-            { key: 'item', label: 'Particular' },
-            { key: 'value', label: 'Value', align: 'right' },
-          ]}
-        >
-          {schedule.map(([label, value]) => (
-            <Row key={label}>
-              <Cell className="text-[var(--ink-soft)]">{label}</Cell>
-              <Cell align="right" mono>
-                {value}
-              </Cell>
-            </Row>
-          ))}
-        </Statement>
-      </Sheet>
-
-      <div className="grid gap-4 lg:grid-cols-3">
-        <SentimentPanel
-          score={sentiment?.score ?? sentimentScore}
-          summary={analystSummary}
-          sentiment={sentiment}
-        />
-        <RiskPanel signal={finalSignal} risk={risk} currency={currency} />
-        <TechnicalPanel signals={allSignals} indicators={indicators} currency={currency} />
+      <div className="flex border-b border-[var(--rule-strong)]" role="tablist" aria-label="Enquiry">
+        {TABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === item.id}
+            onClick={() => openTab(item.id)}
+            className={cn(
+              'flex-1 sm:flex-none px-4 py-3 font-[family-name:var(--font-narrow)] text-xs font-semibold uppercase tracking-[0.11em] border-b-2 -mb-px transition-colors',
+              tab === item.id
+                ? 'border-[var(--stamp)] text-[var(--ink)]'
+                : 'border-transparent text-[var(--ink-soft)] hover:text-[var(--ink)]'
+            )}
+          >
+            {item.label}
+            {item.id === 'ai' && aiLoading && (
+              <Loader2 className="inline w-3 h-3 ml-1.5 animate-spin align-[-1px]" />
+            )}
+          </button>
+        ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <NewsFeed articles={data.news_articles} />
-        <EventsList events={data.events} />
-      </div>
+      {tab === 'overview' && (
+        <div className="space-y-4">
+          <Sheet title="Price">
+            <TradingChart data={quick.price_data} technicals={technicals} currency={currency} />
+          </Sheet>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Sheet title="Schedule of particulars">
+              <Statement
+                columns={[
+                  { key: 'item', label: 'Particular' },
+                  { key: 'value', label: 'Value', align: 'right' },
+                ]}
+              >
+                {schedule.map(([label, value]) => (
+                  <Row key={label}>
+                    <Cell className="text-[var(--ink-soft)]">{label}</Cell>
+                    <Cell align="right" mono>
+                      {value}
+                    </Cell>
+                  </Row>
+                ))}
+              </Statement>
+            </Sheet>
+
+            <TechnicalPanel indicators={technicals} currency={currency} />
+          </div>
+        </div>
+      )}
+
+      {tab === 'ai' && (
+        <div className="space-y-4">
+          {aiLoading && (
+            <Sheet>
+              <div className="flex items-center gap-3 py-6 justify-center text-[var(--ink-soft)]">
+                <Loader2 className="w-4 h-4 animate-spin text-[var(--stamp)]" />
+                <span className="text-sm">Reading news and sentiment…</span>
+              </div>
+            </Sheet>
+          )}
+
+          {aiError && !aiLoading && (
+            <Sheet>
+              <Empty
+                title="Could not load the AI analysis"
+                detail={aiError}
+                action={
+                  <Button variant="secondary" size="sm" onClick={onOpenAiTab}>
+                    Retry
+                  </Button>
+                }
+              />
+            </Sheet>
+          )}
+
+          {ai && !aiLoading && !aiError && (
+            <>
+              <SentimentPanel
+                score={ai.sentiment?.score ?? ai.sentiment_score}
+                summary={ai.analyst_summary}
+                sentiment={ai.sentiment}
+                thesis={ai.thesis}
+              />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <NewsFeed articles={ai.news_articles} />
+                <EventsList events={ai.events} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -3,11 +3,24 @@ from pydantic import BaseModel
 import logging
 
 from backend.research.graph import ResearchAgent, ResearchReport
+from backend.research.quick import QuickAnalysis, quick_analysis
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 research_agent = ResearchAgent()
+
+
+@router.post("/quick-analyze/{symbol}", response_model=QuickAnalysis)
+async def quick_analyze_stock(symbol: str):
+    """Non-AI counterpart to /analyze/{symbol}: quote, fundamentals, and
+    price-based technicals only, no LLM call. HTTP fallback for the `quick_analyze`
+    websocket action (see backend/ws/routes.py) when the socket isn't up yet."""
+    try:
+        return await quick_analysis(symbol)
+    except Exception as e:
+        logger.error(f"Error in quick analysis for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 class AnalyzeRequest(BaseModel):
     symbol: str
