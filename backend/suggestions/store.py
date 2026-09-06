@@ -69,6 +69,11 @@ class SuggestionStore:
         doc = await self.collection.find_one({"user_id": user_id, "id": suggestion_id})
         return _clean(doc) if doc else None
 
+    async def has_pending(self, user_id: str, symbol: str, mode: str) -> bool:
+        return await self.collection.find_one(
+            {"user_id": user_id, "symbol": symbol, "mode": mode, "status": PENDING}
+        ) is not None
+
     async def list(
         self,
         user_id: str,

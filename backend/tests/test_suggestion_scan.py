@@ -1,0 +1,201 @@
+"""Scanning a universe for fresh long-term suggestions.
+
+The strategies need months of history before they will say anything, but only
+the newest bar's signals are actionable -- a breakout from six weeks ago is
+not a trade you can still take. The scan therefore replays history to warm
+the strategies up and only records suggestions from the final session.
+"""
+
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from mongomock_motor import AsyncMongoMockClient
+
+from backend.core.models import Intent, Order, Side
+from backend.engine.runner import Proposal
+from backend.instruments.models import Instrument
+from backend.scoring.composite import CompositeScore
+from backend.suggestions.scan import scan_universe
+from backend.suggestions.sink import SuggestionSink
+from backend.suggestions.store import SuggestionStore
+
+T0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+
+@pytest.fixture
+def mongo():
+    return AsyncMongoMockClient()["test_db"]
+
+
+def _proposal(symbol="RELIANCE", mode="LONGTERM") -> Proposal:
+    return Proposal(
+        order=Order(id="o1", symbol=symbol, side=Side.BUY, quantity=5.0,
+                    order_type="MARKET", limit_price=None, product="CNC"),
+        intent=Intent(symbol=symbol, side=Side.BUY, strength=0.7,
+                      reason_codes=["breakout"], stop_hint=90.0, target_hint=120.0),
+        score=CompositeScore(rule_score=0.7, ai_score=0.0),
+        entry=100.0,
+        mode=mode,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The sink's arming and de-duplication, which is what keeps a daily scan from
+# filling the inbox with the same idea over and over.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_disarmed_sink_records_nothing(mongo):
+    store = SuggestionStore(mongo)
+    sink = SuggestionSink(store, user_id="alice", source="scan")
+    sink.armed = False
+
+    executed = await sink(_proposal())
+
+    assert executed is False, "warmup signals must not execute either"
+    assert await store.list("alice") == []
+
+
+@pytest.mark.asyncio
+async def test_sink_skips_a_symbol_that_already_has_a_pending_suggestion(mongo):
+    store = SuggestionStore(mongo)
+    sink = SuggestionSink(store, user_id="alice", source="scan")
+
+    await sink(_proposal())
+    await sink(_proposal())
+
+    assert len(await store.list("alice", status="PENDING")) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_decided_symbol_can_be_suggested_again(mongo):
+    store = SuggestionStore(mongo)
+    sink = SuggestionSink(store, user_id="alice", source="scan")
+    await sink(_proposal())
+    pending = (await store.list("alice"))[0]
+    await store.decide("alice", pending["id"], status="REJECTED")
+
+    await sink(_proposal())
+
+    assert len(await store.list("alice", status="PENDING")) == 1
+
+
+# ---------------------------------------------------------------------------
+# The scan itself, against a fake provider (no yfinance in a unit test)
+# ---------------------------------------------------------------------------
+
+DAYS = 60
+FINAL_CLOSE = 100.0 * (1.004 ** DAYS)
+
+
+class _RisingHistoryProvider:
+    """A clean uptrend ending today.
+
+    The scan only looks back a bounded window, so a fixture anchored to a
+    fixed past date would be filtered out entirely and every assertion below
+    would pass by seeing nothing at all.
+    """
+
+    async def history(self, instrument, interval, period):
+        from backend.components.shared.models import PriceCandle
+
+        first_day = datetime.now(timezone.utc) - timedelta(days=DAYS)
+        candles = []
+        price = 100.0
+        for day in range(DAYS):
+            price *= 1.004
+            candles.append(PriceCandle(
+                symbol=instrument.tradingsymbol,
+                timestamp=first_day + timedelta(days=day),
+                open=price * 0.995, high=price * 1.02, low=price * 0.99,
+                close=price, volume=100_000,
+            ))
+        return candles
+
+    async def quote(self, instrument):
+        raise NotImplementedError
+
+
+class _AlwaysBuyStrategy:
+    """Fires on every bar.
+
+    The real strategies only speak on rare setups, so driving this test with
+    them would mean asserting against silence -- which passes whether the
+    arming logic works or the scan is broken. This one makes the arming
+    itself the only thing that decides how many suggestions appear.
+    """
+
+    def __init__(self, universe, symbol_for_token):
+        from backend.engine.protocols import StrategySpec
+
+        self.symbol_for_token = symbol_for_token
+        self.spec = StrategySpec(
+            name="always_buy", mode="LONGTERM", timeframe="1d",
+            warmup_bars=1, universe=universe,
+        )
+
+    def on_start(self, ctx) -> None:
+        pass
+
+    def on_fill(self, ctx, fill) -> None:
+        pass
+
+    def on_bar(self, ctx, bar) -> None:
+        symbol = self.symbol_for_token.get(bar.instrument_token)
+        if symbol is None:
+            return
+        ctx.submit(Intent(
+            symbol=symbol, side=Side.BUY, strength=0.9, reason_codes=["always"],
+            stop_hint=bar.close * 0.95, target_hint=bar.close * 1.1,
+        ))
+
+
+def _only_always_buy(universe, symbol_for_token, **_):
+    return [_AlwaysBuyStrategy(universe, symbol_for_token)]
+
+
+class _FakeMaster:
+    def __init__(self, _db):
+        pass
+
+    async def get(self, exchange, tradingsymbol):
+        return Instrument(
+            exchange=exchange, tradingsymbol=tradingsymbol, name=tradingsymbol,
+            instrument_token=abs(hash(tradingsymbol)) % 100000, exchange_token=1,
+            instrument_type="EQ", segment="NSE", lot_size=1, tick_size=0.05,
+        )
+
+
+@pytest.mark.asyncio
+async def test_scan_records_one_suggestion_per_symbol_from_the_final_session(mongo, monkeypatch):
+    from backend.suggestions import scan as scan_module
+
+    monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
+    monkeypatch.setattr(scan_module, "build_default_strategies", _only_always_buy)
+
+    created = await scan_universe(mongo, user_id="alice", universe=["RELIANCE", "TCS"])
+
+    assert {s["symbol"] for s in created} == {"RELIANCE", "TCS"}
+    assert all(s["source"] == "scan" and s["mode"] == "LONGTERM" for s in created)
+    # The strategy fired on all 60 bars; only the last session's signal is
+    # advice, so anything above one per symbol means the sink stayed armed
+    # through the warmup replay.
+    assert len(created) == 2
+    assert created[0]["entry_ref"] == pytest.approx(FINAL_CLOSE, rel=1e-6)
+
+    assert len(await SuggestionStore(mongo).list("alice", status="PENDING")) == 2
+
+
+@pytest.mark.asyncio
+async def test_scan_with_no_resolvable_symbols_returns_nothing(mongo, monkeypatch):
+    from backend.suggestions import scan as scan_module
+
+    class _EmptyMaster(_FakeMaster):
+        async def get(self, exchange, tradingsymbol):
+            return None
+
+    monkeypatch.setattr(scan_module, "InstrumentMaster", _EmptyMaster)
+    monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
+
+    assert await scan_universe(mongo, user_id="alice", universe=["NOSUCH"]) == []

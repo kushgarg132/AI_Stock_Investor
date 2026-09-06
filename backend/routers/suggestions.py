@@ -6,6 +6,7 @@ engine computed, and wait for a decision. Approving is the only place in the
 app where a person causes a trade.
 """
 
+import asyncio
 import logging
 from typing import Literal, Optional
 
@@ -18,8 +19,11 @@ from backend.database import db
 from backend.data.providers.yfinance_provider import YFinanceProvider
 from backend.engine.persistence import LedgerStore
 from backend.instruments.master import InstrumentMaster
+from backend.prefs import PrefsStore
+from backend.suggestions.scan import scan_universe
 from backend.suggestions.service import execute_suggestion
 from backend.suggestions.store import SuggestionStore
+from backend.suggestions.thesis import attach_theses
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,38 @@ def get_mark_price():
 
 class RejectRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class ScanRequest(BaseModel):
+    universe: Optional[list[str]] = None  # defaults to the user's saved universe
+
+
+@router.post("/scan", status_code=202)
+async def scan_now(
+    body: ScanRequest = ScanRequest(),
+    user: User = Depends(get_current_user),
+):
+    """Runs in the background: a scan pulls a year of daily history per
+    symbol, which is minutes for a full universe -- far too long to hold an
+    HTTP request open. New suggestions appear in the inbox as they land."""
+    prefs = await PrefsStore(db.db).get(user.id)
+    universe = body.universe or prefs["universe"]
+
+    asyncio.create_task(_scan_and_enrich(user.id, universe, prefs))
+    return {"started": True, "symbols": len(universe)}
+
+
+async def _scan_and_enrich(user_id: str, universe: list[str], prefs: dict) -> None:
+    try:
+        created = await scan_universe(
+            db.db, user_id=user_id, universe=universe,
+            account_size=prefs["account_size"], max_exposure=prefs["max_exposure"],
+            source="manual", redis=db.redis,
+        )
+        if created:
+            await attach_theses(db.db, user_id, created)
+    except Exception as exc:
+        logger.exception("manual scan failed for %s: %s", user_id, exc)
 
 
 @router.get("")

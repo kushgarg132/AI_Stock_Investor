@@ -13,6 +13,8 @@ from backend.auth.store import UserStore
 from backend.configs.settings import settings
 from backend.runs import RunStore
 from backend.suggestions.store import SuggestionStore
+from backend.prefs import PrefsStore
+from backend import scheduler
 from backend.configs.logging_config import setup_logging
 from backend.database import db
 from backend.instruments.master import InstrumentMaster
@@ -61,6 +63,10 @@ async def startup_db_client():
     logger.info(f"Instrument master seeded: {count} upserted.")
 
     await SuggestionStore(db.db).ensure_indexes()
+    await PrefsStore(db.db).ensure_indexes()
+
+    # Post-close scan, sentiment refresh and suggestion expiry.
+    scheduler.start(db.db, db.redis)
 
     # An asyncio.Task cannot outlive the process that created it, so any run
     # still marked RUNNING belongs to a previous life of this container.
