@@ -21,6 +21,9 @@ services:
       FINNHUB_API_KEY: ${FINNHUB_API_KEY:-}
       KITE_API_KEY: ${KITE_API_KEY:-}
       KITE_API_SECRET: ${KITE_API_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      JWT_SECRET: ${JWT_SECRET:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     networks:

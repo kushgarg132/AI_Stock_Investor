@@ -1,6 +1,6 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, NoDecode
 from pydantic import field_validator, ValidationInfo
-from typing import Optional, List
+from typing import Annotated, Optional, List
 
 class Settings(BaseSettings):
     # Project Info
@@ -43,7 +43,11 @@ class Settings(BaseSettings):
     # Explicit CORS allowlist -- replaces allow_origins=["*"], which is an
     # invalid combination with allow_credentials=True for real credentialed
     # cross-origin requests.
-    CORS_ALLOWED_ORIGINS: List[str] = ["http://localhost:5173"]
+    # NoDecode: pydantic-settings otherwise tries to JSON-decode any env var
+    # feeding a List[str] field before any validator runs, which crashes on
+    # a plain comma-separated string like "http://a,http://b" (not valid
+    # JSON) -- NoDecode passes the raw string through to our validator.
+    CORS_ALLOWED_ORIGINS: Annotated[List[str], NoDecode] = ["http://localhost:5173"]
 
     @field_validator("CORS_ALLOWED_ORIGINS", mode="before")
     @classmethod
