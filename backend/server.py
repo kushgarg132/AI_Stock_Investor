@@ -60,10 +60,10 @@ async def startup_db_client():
     count = await refresh_instruments(SeedFileSource(), master)
     logger.info(f"Instrument master seeded: {count} upserted.")
 
-    # An asyncio.Task cannot outlive the process that created it, so any run
-    # still marked RUNNING belongs to a previous life of this container.
     await SuggestionStore(db.db).ensure_indexes()
 
+    # An asyncio.Task cannot outlive the process that created it, so any run
+    # still marked RUNNING belongs to a previous life of this container.
     runs = RunStore(db.db)
     await runs.ensure_indexes()
     orphaned = await runs.close_orphaned()
@@ -102,11 +102,13 @@ from backend.routers import market_data
 from backend.routers import watchlist
 from backend.routers import trading
 from backend.routers import suggestions
+from backend.routers import analytics
 
 app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"], dependencies=[Depends(get_current_user)])
 app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"], dependencies=[Depends(get_current_user)])
 app.include_router(trading.router, prefix=settings.API_PREFIX, tags=["Trading"], dependencies=[Depends(get_current_user)])
 app.include_router(suggestions.router, prefix=settings.API_PREFIX, tags=["Suggestions"], dependencies=[Depends(get_current_user)])
+app.include_router(analytics.router, prefix=settings.API_PREFIX, tags=["Analytics"], dependencies=[Depends(get_current_user)])
 
 @app.get("/docs", include_in_schema=False)
 async def redirect_docs():
