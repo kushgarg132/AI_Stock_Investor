@@ -5,14 +5,12 @@ import api, { endpoints } from '../utils/api';
 import { Trash2, TrendingUp, TrendingDown, ArrowRight, Loader2 } from 'lucide-react';
 import { Badge } from '../components/common/Badge';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+
 
 const Watchlist = () => {
     const [watchlist, setWatchlist] = useState([]);
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
-    const { user } = useAuth();
-    const userId = user.id;
 
     useEffect(() => {
         fetchWatchlist();
@@ -20,7 +18,7 @@ const Watchlist = () => {
 
     const fetchWatchlist = async () => {
         try {
-            const res = await api.get(endpoints.watchlist.details(userId));
+            const res = await api.get(endpoints.watchlist.details);
             setWatchlist(res.data);
         } catch (error) {
             console.error("Failed to fetch watchlist:", error);
@@ -32,7 +30,7 @@ const Watchlist = () => {
     const handleRemove = async (e, symbol) => {
         e.stopPropagation();
         try {
-            await api.delete(endpoints.watchlist.remove(userId, symbol));
+            await api.delete(endpoints.watchlist.remove(symbol));
             // Optimistic update
             setWatchlist(prev => prev.filter(item => item.symbol !== symbol));
         } catch (error) {

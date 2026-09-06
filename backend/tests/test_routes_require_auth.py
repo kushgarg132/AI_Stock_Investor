@@ -14,7 +14,7 @@ client = TestClient(app)
 # /auth/*, /docs, /redoc, /openapi.json, and the root "/" health message.
 PROTECTED_SAMPLE_PATHS = [
     ("GET", "/api/v1/market/indices"),
-    ("GET", "/api/v1/watchlist/someuser"),
+    ("GET", "/api/v1/watchlist"),
     ("GET", "/api/v1/trading/positions"),
     ("GET", "/api/v1/settings/omniroute-model"),
     ("POST", "/api/v1/agents/analyze/RELIANCE"),

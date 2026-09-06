@@ -50,11 +50,13 @@ export const endpoints = {
   stockInfo: (symbol) => `/stock_info/${symbol}`,
   marketIndices: '/market/indices',
   trendingStocks: '/market/trending',
+  // The backend derives the owner from the session token; there is no user
+  // id in these paths any more.
   watchlist: {
-    get: (userId) => `/watchlist/${userId}`,
-    add: (userId, symbol) => `/watchlist/${userId}/add?symbol=${symbol}`,
-    remove: (userId, symbol) => `/watchlist/${userId}/remove/${symbol}`,
-    details: (userId) => `/watchlist/${userId}/details`,
+    get: '/watchlist',
+    add: (symbol) => `/watchlist/add?symbol=${encodeURIComponent(symbol)}`,
+    remove: (symbol) => `/watchlist/remove/${encodeURIComponent(symbol)}`,
+    details: '/watchlist/details',
   },
   globalIndices: '/market/global',
   marketNews: '/news/market',

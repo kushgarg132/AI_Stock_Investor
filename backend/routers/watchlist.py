@@ -1,77 +1,74 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+"""/watchlist/* -- always the signed-in user's own list.
+
+The user id used to be a path parameter, which meant any account could read
+or edit any other account's watchlist by guessing an id. It now comes from
+the session token only.
+"""
+
+from datetime import datetime, timezone
+from typing import Any, Dict, List
+
+from fastapi import APIRouter, Depends
+
+from backend.auth.dependency import get_current_user
+from backend.auth.models import User
+from backend.components.master.stock_info import fetch_stock_info_logic
 from backend.components.shared.models import Watchlist
 from backend.database import db
-from datetime import datetime
-from typing import List, Dict, Any
-from backend.components.master.stock_info import fetch_stock_info_logic
 
 router = APIRouter(prefix="/watchlist", tags=["Watchlist"])
 
-@router.get("/{user_id}", response_model=Watchlist)
-async def get_watchlist(user_id: str):
-    """Get a user's watchlist. Creates one if it doesn't exist."""
-    collection = db.db.watchlist
-    
-    watchlist = await collection.find_one({"user_id": user_id})
-    
-    if not watchlist:
-        # Create empty watchlist
-        new_watchlist = Watchlist(user_id=user_id, symbols=[])
-        await collection.insert_one(new_watchlist.model_dump())
-        return new_watchlist
-        
-    return Watchlist(**watchlist)
 
-@router.post("/{user_id}/add", response_model=Watchlist)
-async def add_to_watchlist(user_id: str, symbol: str):
-    """Add a symbol to the user's watchlist."""
-    symbol = symbol.upper()
+async def _load_or_create(user_id: str) -> Watchlist:
     collection = db.db.watchlist
-    
-    # Ensure exists
-    watchlist = await get_watchlist(user_id)
-    
-    if symbol not in watchlist.symbols:
-        await collection.update_one(
-            {"user_id": user_id},
-            {
-                "$push": {"symbols": symbol},
-                "$set": {"updated_at": datetime.utcnow()}
-            }
-        )
-        watchlist.symbols.append(symbol)
-        
+    doc = await collection.find_one({"user_id": user_id})
+    if doc:
+        doc.pop("_id", None)
+        return Watchlist(**doc)
+
+    watchlist = Watchlist(user_id=user_id, symbols=[])
+    await collection.insert_one(watchlist.model_dump())
     return watchlist
 
-@router.delete("/{user_id}/remove/{symbol}", response_model=Watchlist)
-async def remove_from_watchlist(user_id: str, symbol: str):
-    """Remove a symbol from the user's watchlist."""
-    symbol = symbol.upper()
-    collection = db.db.watchlist
-    
-    await collection.update_one(
-        {"user_id": user_id},
-        {
-            "$pull": {"symbols": symbol},
-            "$set": {"updated_at": datetime.utcnow()}
-        }
-    )
-    
-    return await get_watchlist(user_id)
 
-@router.get("/{user_id}/details", response_model=List[Dict[str, Any]])
-async def get_watchlist_details(user_id: str):
-    """Get detailed stock info for all symbols in the watchlist."""
-    watchlist = await get_watchlist(user_id)
+@router.get("", response_model=Watchlist)
+async def get_watchlist(user: User = Depends(get_current_user)):
+    return await _load_or_create(user.id)
+
+
+@router.post("/add", response_model=Watchlist)
+async def add_to_watchlist(symbol: str, user: User = Depends(get_current_user)):
+    symbol = symbol.upper()
+    watchlist = await _load_or_create(user.id)
+
+    if symbol not in watchlist.symbols:
+        await db.db.watchlist.update_one(
+            {"user_id": user.id},
+            {"$push": {"symbols": symbol}, "$set": {"updated_at": datetime.now(timezone.utc)}},
+        )
+        watchlist.symbols.append(symbol)
+
+    return watchlist
+
+
+@router.delete("/remove/{symbol}", response_model=Watchlist)
+async def remove_from_watchlist(symbol: str, user: User = Depends(get_current_user)):
+    await _load_or_create(user.id)
+    await db.db.watchlist.update_one(
+        {"user_id": user.id},
+        {"$pull": {"symbols": symbol.upper()}, "$set": {"updated_at": datetime.now(timezone.utc)}},
+    )
+    return await _load_or_create(user.id)
+
+
+@router.get("/details", response_model=List[Dict[str, Any]])
+async def get_watchlist_details(user: User = Depends(get_current_user)):
+    watchlist = await _load_or_create(user.id)
     details = []
-    
-    # Ideally use concurrent fetching, keeping simple for now
     for sym in watchlist.symbols:
         try:
             info = await fetch_stock_info_logic(sym)
             details.append(info.model_dump())
         except Exception:
-            # Fallback for error
             details.append({"symbol": sym, "error": "Failed to fetch data"})
-            
     return details
