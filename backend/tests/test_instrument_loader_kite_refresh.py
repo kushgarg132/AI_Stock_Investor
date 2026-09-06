@@ -1,13 +1,27 @@
-"""refresh_from_kite_if_connected: the bundled seed file (~130 large-caps)
-is a floor, not the real universe -- this is what actually expands the
-instrument master to Kite's full NSE+BSE dump once a session is connected,
-and it must never raise regardless of why it can't (no session, expired
-session, database down)."""
+"""refresh_from_kite_if_connected / refresh_from_free_public_sources: the
+bundled seed file (~130 large-caps) is a floor, not the real universe --
+these are what actually expand the instrument master, and neither must ever
+raise regardless of why it can't (no session, expired session, database
+down, NSE/BSE unreachable)."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 from backend.auth.kite_session import KiteSessionState
 from backend.instruments import loader
+
+
+def _fake_master(meta_doc=None):
+    """A master whose collection.database["instrument_meta"] behaves like a
+    real Mongo collection for the last-refreshed marker refresh_from_free_public_sources
+    reads/writes, plus an AsyncMock upsert_many for refresh_instruments to call."""
+    meta = MagicMock()
+    meta.find_one = AsyncMock(return_value=meta_doc)
+    meta.update_one = AsyncMock()
+    master = MagicMock()
+    master.collection.database.__getitem__.return_value = meta
+    master.upsert_many = AsyncMock(side_effect=[3, 2])
+    return master, meta
 
 
 async def test_no_op_when_kite_session_is_not_active(monkeypatch):
@@ -52,3 +66,80 @@ async def test_never_raises_and_returns_zero_on_any_failure(monkeypatch):
     result = await loader.refresh_from_kite_if_connected()
 
     assert result == 0
+
+
+async def test_free_sources_sum_counts_from_both_exchanges(monkeypatch):
+    class _FakeNse:
+        async def fetch(self):
+            return ["nse-stub"] * 3
+
+    class _FakeBse:
+        async def fetch(self):
+            return ["bse-stub"] * 2
+
+    monkeypatch.setattr("backend.instruments.free_source.NseEquityListSource", _FakeNse)
+    monkeypatch.setattr("backend.instruments.free_source.BseEquityListSource", _FakeBse)
+
+    master, meta = _fake_master()
+
+    result = await loader.refresh_from_free_public_sources(master)
+
+    assert result == 5
+    meta.update_one.assert_awaited_once()  # marker recorded so the next run can skip
+
+
+async def test_free_sources_one_exchange_failing_does_not_stop_the_other(monkeypatch):
+    class _FakeNse:
+        async def fetch(self):
+            raise RuntimeError("NSE blocked this IP")
+
+    class _FakeBse:
+        async def fetch(self):
+            return ["bse-stub"]
+
+    monkeypatch.setattr("backend.instruments.free_source.NseEquityListSource", _FakeNse)
+    monkeypatch.setattr("backend.instruments.free_source.BseEquityListSource", _FakeBse)
+
+    master, _meta = _fake_master()
+    master.upsert_many = AsyncMock(return_value=1)
+
+    result = await loader.refresh_from_free_public_sources(master)
+
+    assert result == 1
+
+
+async def test_free_sources_skip_when_refreshed_recently(monkeypatch):
+    master, meta = _fake_master(
+        meta_doc={"_id": "free_source_refresh", "last_refreshed_at": datetime.now(timezone.utc) - timedelta(hours=1)}
+    )
+    fetch_spy = AsyncMock()
+    monkeypatch.setattr(loader, "refresh_instruments", fetch_spy)
+
+    result = await loader.refresh_from_free_public_sources(master)
+
+    assert result == 0
+    fetch_spy.assert_not_called()
+    meta.update_one.assert_not_called()
+
+
+async def test_free_sources_refresh_again_once_the_marker_is_stale(monkeypatch):
+    class _FakeNse:
+        async def fetch(self):
+            return ["nse-stub"]
+
+    class _FakeBse:
+        async def fetch(self):
+            return ["bse-stub"]
+
+    monkeypatch.setattr("backend.instruments.free_source.NseEquityListSource", _FakeNse)
+    monkeypatch.setattr("backend.instruments.free_source.BseEquityListSource", _FakeBse)
+
+    master, meta = _fake_master(
+        meta_doc={"_id": "free_source_refresh", "last_refreshed_at": datetime.now(timezone.utc) - timedelta(hours=48)}
+    )
+    master.upsert_many = AsyncMock(return_value=1)
+
+    result = await loader.refresh_from_free_public_sources(master)
+
+    assert result == 2
+    meta.update_one.assert_awaited_once()

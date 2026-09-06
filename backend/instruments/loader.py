@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -9,6 +10,14 @@ from backend.instruments.models import Instrument
 logger = logging.getLogger(__name__)
 
 SEED_FILE = Path(__file__).parent / "seed_nse_equity.json"
+
+# NSE/BSE's equity lists change slowly (new listings, not intraday) -- no
+# reason to re-fetch and re-upsert ~7,500 rows (measured: over a minute,
+# dominated by round trips to the remote Mongo, even when nothing changed)
+# on every single backend restart. Also just good manners toward two
+# undocumented, non-API endpoints (see free_source.py's docstring).
+_FREE_SOURCE_REFRESH_INTERVAL = timedelta(hours=20)
+_FREE_SOURCE_META_ID = "free_source_refresh"
 
 
 @runtime_checkable
@@ -38,6 +47,44 @@ async def refresh_instruments(source: InstrumentSource, master: InstrumentMaster
     count = await master.upsert_many(instruments)
     logger.info(f"Refreshed instrument master: {count} instruments upserted (of {len(instruments)} fetched)")
     return count
+
+
+async def refresh_from_free_public_sources(master: InstrumentMaster) -> int:
+    """Best-effort: NSE's and BSE's own public equity-list downloads
+    (backend/instruments/free_source.py) as a free stopgap for the
+    ~130-symbol seed file, until this deployment has a paid, connected Kite
+    session (see refresh_from_kite_if_connected below -- which, when it does
+    run, overwrites these rows with real Kite instrument_tokens for the same
+    symbols). Each exchange is independent and swallows its own failure --
+    NSE and BSE both rate-limit/block non-browser traffic sometimes, and one
+    being unreachable shouldn't cost the other. Skips entirely (see
+    _FREE_SOURCE_REFRESH_INTERVAL) if it already ran recently."""
+    meta = master.collection.database["instrument_meta"]
+    marker = await meta.find_one({"_id": _FREE_SOURCE_META_ID})
+    if marker:
+        # Motor/pymongo hand back naive UTC datetimes by default (no
+        # tz_aware=True on this client) regardless of what was stored.
+        last_refreshed_at = marker["last_refreshed_at"].replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - last_refreshed_at
+        if age < _FREE_SOURCE_REFRESH_INTERVAL:
+            logger.info(f"Free NSE/BSE instrument refresh skipped -- last ran {age} ago.")
+            return 0
+
+    from backend.instruments.free_source import BseEquityListSource, NseEquityListSource
+
+    total = 0
+    for label, source in (("NSE", NseEquityListSource()), ("BSE", BseEquityListSource())):
+        try:
+            total += await refresh_instruments(source, master)
+        except Exception as e:
+            logger.warning(f"{label} free instrument list refresh skipped: {e}")
+
+    await meta.update_one(
+        {"_id": _FREE_SOURCE_META_ID},
+        {"$set": {"last_refreshed_at": datetime.now(timezone.utc)}},
+        upsert=True,
+    )
+    return total
 
 
 async def refresh_from_kite_if_connected() -> int:

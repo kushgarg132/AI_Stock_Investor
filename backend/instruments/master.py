@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from typing import Optional
@@ -26,17 +27,26 @@ class InstrumentMaster:
 
     async def upsert_many(self, instruments: list[Instrument]) -> int:
         """Upserts by (exchange, tradingsymbol). Returns the count of documents
-        actually inserted or changed (re-running with identical data is a no-op)."""
-        count = 0
-        for instrument in instruments:
+        actually inserted or changed (re-running with identical data is a no-op).
+
+        Concurrent rather than one round trip awaited at a time -- the free
+        NSE/BSE sources (backend/instruments/free_source.py) upsert several
+        thousand rows on every startup, and doing that serially measured
+        150s. (bulk_write(UpdateOne(...)) would be the more obvious fix, but
+        pymongo 4.18's UpdateOne unconditionally forwards a `sort` kwarg that
+        the mongomock 4.3.0 fake this test suite runs against doesn't accept
+        -- gather() on plain update_one calls gets the same real speedup
+        without depending on bulk_write's newer wire format at all.)"""
+        async def _upsert_one(instrument: Instrument) -> bool:
             result = await self.collection.update_one(
                 {"exchange": instrument.exchange, "tradingsymbol": instrument.tradingsymbol},
                 {"$set": instrument.model_dump()},
                 upsert=True,
             )
-            if result.upserted_id is not None or result.modified_count:
-                count += 1
-        return count
+            return result.upserted_id is not None or result.modified_count > 0
+
+        results = await asyncio.gather(*(_upsert_one(instrument) for instrument in instruments))
+        return sum(results)
 
     async def get(self, exchange: str, tradingsymbol: str) -> Optional[Instrument]:
         doc = await self.collection.find_one(
