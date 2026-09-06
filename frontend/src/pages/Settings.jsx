@@ -52,6 +52,8 @@ const BrokerSheet = () => {
   const [busy, setBusy] = useState(false);
   const [requestToken, setRequestToken] = useState('');
   const [note, setNote] = useState(null);
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
 
   const refresh = () =>
     api
@@ -62,6 +64,25 @@ const BrokerSheet = () => {
   useEffect(() => {
     refresh();
   }, []);
+
+  const saveCredentials = async () => {
+    if (!apiKey.trim() || !apiSecret.trim()) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.post(endpoints.settings.kiteCredentials, {
+        api_key: apiKey.trim(),
+        api_secret: apiSecret.trim(),
+      });
+      setApiKey('');
+      setApiSecret('');
+      await refresh();
+    } catch (err) {
+      setNote(err?.response?.data?.detail || 'Could not save the credentials');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const openLogin = async () => {
     setBusy(true);
@@ -122,11 +143,45 @@ const BrokerSheet = () => {
       </p>
 
       {state.state === 'UNCONFIGURED' ? (
-        <Empty
-          className="mt-4"
-          title="No API credentials on the server"
-          detail="Set KITE_API_KEY and KITE_API_SECRET in the backend environment, then reload this page."
-        />
+        <div className="mt-4 space-y-3">
+          <p className="doc-meta normal-case">
+            Paste the API key and secret from your Kite Connect app to configure this server.
+          </p>
+          <div>
+            <label htmlFor="kite-api-key" className="field-label block mb-1">
+              API key
+            </label>
+            <input
+              id="kite-api-key"
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              autoComplete="off"
+              className="w-full bg-transparent border-b border-[var(--rule-strong)] py-1.5 text-sm focus:outline-none focus:border-[var(--stamp)]"
+            />
+          </div>
+          <div>
+            <label htmlFor="kite-api-secret" className="field-label block mb-1">
+              API secret
+            </label>
+            <input
+              id="kite-api-secret"
+              type="password"
+              value={apiSecret}
+              onChange={(event) => setApiSecret(event.target.value)}
+              autoComplete="off"
+              className="w-full bg-transparent border-b border-[var(--rule-strong)] py-1.5 text-sm focus:outline-none focus:border-[var(--stamp)]"
+            />
+          </div>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={saveCredentials}
+            disabled={busy || !apiKey.trim() || !apiSecret.trim()}
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Save
+          </Button>
+        </div>
       ) : state.connected ? (
         <div className="mt-4 flex items-center justify-between gap-4">
           <Stamp label="Connected" tone="gain" />

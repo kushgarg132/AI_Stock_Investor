@@ -74,6 +74,28 @@ class ModelUpdate(BaseModel):
     model: str
 
 
+def _write_env_vars(updates: dict[str, str]) -> None:
+    """Persists key=value pairs to .env, replacing existing lines for those
+    keys or appending new ones. Callers are responsible for also updating
+    the in-memory `settings` object so the running process picks up the
+    change without a restart."""
+    content = ENV_PATH.read_text().splitlines() if ENV_PATH.exists() else []
+    remaining = dict(updates)
+
+    new_content = []
+    for line in content:
+        key = line.split("=", 1)[0] if "=" in line else None
+        if key in remaining:
+            new_content.append(f"{key}={remaining.pop(key)}")
+        else:
+            new_content.append(line)
+
+    for key, value in remaining.items():
+        new_content.append(f"{key}={value}")
+
+    ENV_PATH.write_text("\n".join(new_content) + "\n")
+
+
 @router.post("/settings/omniroute-model")
 async def set_omniroute_model(update: ModelUpdate):
     """Persists the selected model to .env and updates the running process's
@@ -84,22 +106,7 @@ async def set_omniroute_model(update: ModelUpdate):
         raise HTTPException(status_code=400, detail="Model cannot be empty")
 
     try:
-        content = ENV_PATH.read_text().splitlines() if ENV_PATH.exists() else []
-
-        model_found = False
-        new_content = []
-        for line in content:
-            if line.startswith("OMNIROUTE_MODEL="):
-                new_content.append(f"OMNIROUTE_MODEL={new_model}")
-                model_found = True
-            else:
-                new_content.append(line)
-
-        if not model_found:
-            new_content.append(f"OMNIROUTE_MODEL={new_model}")
-
-        ENV_PATH.write_text("\n".join(new_content) + "\n")
-
+        _write_env_vars({"OMNIROUTE_MODEL": new_model})
         settings.OMNIROUTE_MODEL = new_model
         logger.info(f"OmniRoute model updated to {new_model!r} via Settings API.")
         return {"message": "Model updated successfully"}
@@ -107,3 +114,32 @@ async def set_omniroute_model(update: ModelUpdate):
     except OSError as e:
         logger.error(f"Failed to update .env file: {e}")
         raise HTTPException(status_code=500, detail="Failed to save model selection")
+
+
+class KiteCredentialsUpdate(BaseModel):
+    api_key: str
+    api_secret: str
+
+
+@router.post("/settings/kite-credentials")
+async def set_kite_credentials(update: KiteCredentialsUpdate, _user: User = Depends(get_current_user)):
+    """Lets the operator paste their Zerodha Kite Connect app credentials in
+    from the Settings page instead of SSHing in to edit .env by hand. Same
+    per-deployment shape as the rest of this app (see backend/routers/broker.py's
+    module docstring) -- one credential pair for the whole server, not
+    per-user."""
+    api_key = update.api_key.strip()
+    api_secret = update.api_secret.strip()
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="Both API key and secret are required")
+
+    try:
+        _write_env_vars({"KITE_API_KEY": api_key, "KITE_API_SECRET": api_secret})
+        settings.KITE_API_KEY = api_key
+        settings.KITE_API_SECRET = api_secret
+        logger.info("Kite API credentials updated via Settings API.")
+        return {"message": "Credentials saved"}
+
+    except OSError as e:
+        logger.error(f"Failed to update .env file: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save credentials")
