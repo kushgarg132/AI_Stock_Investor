@@ -23,6 +23,7 @@ from backend.auth.kite_session import KiteSessionManager, KiteSessionState
 from backend.auth.models import User
 from backend.configs.settings import settings
 from backend.database import db
+from backend.instruments.loader import refresh_from_kite_if_connected
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,14 @@ async def kite_callback(
     except Exception as exc:
         logger.warning("kite token exchange failed: %s", exc)
         raise HTTPException(status_code=502, detail="Kite rejected the request token")
+
+    # Best-effort, off the response: this is what actually expands the
+    # instrument master beyond the bundled ~130-symbol seed (see loader.py) --
+    # do it the moment a session connects rather than making the operator
+    # wait for the next backend restart.
+    kite_count = await refresh_from_kite_if_connected()
+    if kite_count:
+        logger.info(f"Instrument master expanded from Kite: {kite_count} upserted.")
 
     return {"state": (await session.state()).value, "connected": True}
 

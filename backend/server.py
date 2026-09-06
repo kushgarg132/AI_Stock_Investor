@@ -21,7 +21,7 @@ from backend.ws import routes as ws_routes
 from backend.configs.logging_config import setup_logging
 from backend.database import db
 from backend.instruments.master import InstrumentMaster
-from backend.instruments.loader import SeedFileSource, refresh_instruments
+from backend.instruments.loader import SeedFileSource, refresh_instruments, refresh_from_kite_if_connected
 
 # Setup Logging
 logger = setup_logging()
@@ -65,6 +65,9 @@ async def startup_db_client():
     await RefreshTokenStore(db.db).ensure_indexes()
     count = await refresh_instruments(SeedFileSource(), master)
     logger.info(f"Instrument master seeded: {count} upserted.")
+    kite_count = await refresh_from_kite_if_connected()
+    if kite_count:
+        logger.info(f"Instrument master expanded from Kite: {kite_count} upserted.")
 
     await SuggestionStore(db.db).ensure_indexes()
     await PrefsStore(db.db).ensure_indexes()

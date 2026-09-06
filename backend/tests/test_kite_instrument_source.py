@@ -50,6 +50,20 @@ async def test_fetch_maps_kite_rows_to_instruments():
     assert inst.isin is None  # Kite's dump has no ISIN column
 
 
+async def test_fetch_pulls_every_configured_exchange():
+    mock_kite = MagicMock()
+    mock_kite.instruments.side_effect = lambda exchange: [
+        _canned_kite_instruments_row(tradingsymbol=f"SYM-{exchange}", exchange=exchange)
+    ]
+    source = KiteInstrumentSource(kite_client_factory=lambda: mock_kite, exchanges=("NSE", "BSE"))
+
+    instruments = await source.fetch()
+
+    assert mock_kite.instruments.call_args_list == [(("NSE",),), (("BSE",),)]
+    assert [inst.tradingsymbol for inst in instruments] == ["SYM-NSE", "SYM-BSE"]
+    assert [inst.exchange for inst in instruments] == ["NSE", "BSE"]
+
+
 async def test_fetch_maps_multiple_rows():
     mock_kite = MagicMock()
     mock_kite.instruments.return_value = [

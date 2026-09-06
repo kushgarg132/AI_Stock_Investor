@@ -25,12 +25,19 @@ from backend.instruments.models import Instrument
 
 
 class KiteInstrumentSource:
-    def __init__(self, kite_client_factory: Callable[[], "KiteConnect"]) -> None:  # noqa: F821
+    def __init__(
+        self,
+        kite_client_factory: Callable[[], "KiteConnect"],  # noqa: F821
+        exchanges: tuple[str, ...] = ("NSE",),
+    ) -> None:
         self._kite_client_factory = kite_client_factory
+        self._exchanges = exchanges
 
     async def fetch(self) -> list[Instrument]:
         kite = self._kite_client_factory()
-        rows = await asyncio.to_thread(kite.instruments, "NSE")
+        rows = []
+        for exchange in self._exchanges:
+            rows.extend(await asyncio.to_thread(kite.instruments, exchange))
         return [self._to_instrument(row) for row in rows]
 
     @staticmethod
