@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     KITE_API_KEY: Optional[str] = None
     KITE_API_SECRET: Optional[str] = None
 
+    # A connected Kite session is used for market data only. Real order
+    # routing is not implemented: the ExecutionClient protocol is the seam it
+    # would slot into, and turning this on tells /trading/start to refuse
+    # rather than quietly paper-trade money someone believed was live.
+    TRADING_LIVE_ENABLED: bool = False
+
     # Google Sign-In (ID-token verification only -- no client secret, no
     # redirect URI needed for this flow).
     GOOGLE_CLIENT_ID: Optional[str] = None

@@ -22,11 +22,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.auth.dependency import get_current_user
+from backend.auth.kite_session import KiteSessionManager, KiteSessionState
 from backend.auth.models import User
+from backend.configs.settings import settings
 from backend.components.quant.indian_stocks import ALL_SCAN_STOCKS
 from backend.core.clock import SystemClock
 from backend.database import db
 from backend.data.providers.yfinance_provider import YFinanceProvider
+from backend.data.feeds.live_kite import KiteTickerFeed
+from kiteconnect import KiteTicker
 from backend.data.feeds.polling_live import PollingLiveFeed
 from backend.engine.execution.simulated import SimulatedExecutionClient
 from backend.engine.persistence import LedgerStore
@@ -91,6 +95,32 @@ def start_background_run(coro, run_id: Optional[str] = None, runs: Optional[RunS
     return run_id
 
 
+async def build_feed(instruments, mode: str, poll_interval_seconds: float):
+    """Real Kite ticks when a broker session is connected, polled quotes
+    otherwise.
+
+    Only intraday benefits: a ticker feed aggregates ticks into bars as they
+    arrive, which is exactly what a 5-minute strategy wants and pointless for
+    a daily one, where a poll of the current quote is both sufficient and
+    available without a broker login.
+    """
+    if mode == "INTRADAY":
+        session = KiteSessionManager(settings.KITE_API_KEY, settings.KITE_API_SECRET, db.redis)
+        if await session.state() == KiteSessionState.ACTIVE:
+            access_token = await session.get_access_token()
+            tokens = [i.instrument_token for i in instruments]
+            logger.info("using live Kite ticks for %d instrument(s)", len(tokens))
+            return KiteTickerFeed(
+                lambda: KiteTicker(api_key=settings.KITE_API_KEY, access_token=access_token),
+                tokens, timeframe="5m", timeframe_seconds=300.0,
+            )
+
+    return PollingLiveFeed(
+        YFinanceProvider(), instruments, timeframe=_MODE_TIMEFRAME[mode],
+        poll_interval_seconds=poll_interval_seconds,
+    )
+
+
 async def stop_background_run(run_id: str) -> bool:
     task = _RUNS.get(run_id)
     if task is None:
@@ -130,6 +160,12 @@ async def start_trading(
     user: User = Depends(get_current_user),
     runs: RunStore = Depends(get_run_store),
 ):
+    if settings.TRADING_LIVE_ENABLED:
+        raise HTTPException(
+            status_code=501,
+            detail="Live order routing is not implemented; unset TRADING_LIVE_ENABLED to paper trade",
+        )
+
     master = InstrumentMaster(db.db)
     symbols = req.universe or list(ALL_SCAN_STOCKS)
 
@@ -152,10 +188,7 @@ async def start_trading(
         raise HTTPException(status_code=400, detail=f"No strategies registered for mode {req.mode!r}")
 
     run_id = str(uuid.uuid4())
-    feed = PollingLiveFeed(
-        YFinanceProvider(), instruments, timeframe=_MODE_TIMEFRAME[req.mode],
-        poll_interval_seconds=req.poll_interval_seconds,
-    )
+    feed = await build_feed(instruments, req.mode, req.poll_interval_seconds)
     execution = SimulatedExecutionClient()
     portfolio = Portfolio()
     ledger = LedgerStore(db.db, user_id=user.id, run_id=run_id, on_change=publisher_for(user.id))

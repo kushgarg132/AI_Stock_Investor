@@ -109,3 +109,9 @@ class KiteSessionManager:
 
     async def get_access_token(self) -> Optional[str]:
         return await self._redis.get(_REDIS_KEY)
+
+    async def clear(self) -> None:
+        """Forgets the cached access token. Kite has no logout endpoint, so
+        disconnecting means dropping our copy; the token stays valid on
+        Kite's side until it expires at 06:00 IST."""
+        await self._redis.delete(_REDIS_KEY)

@@ -113,12 +113,14 @@ from backend.routers import watchlist
 from backend.routers import trading
 from backend.routers import suggestions
 from backend.routers import analytics
+from backend.routers import broker
 
 app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"], dependencies=[Depends(get_current_user)])
 app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"], dependencies=[Depends(get_current_user)])
 app.include_router(trading.router, prefix=settings.API_PREFIX, tags=["Trading"], dependencies=[Depends(get_current_user)])
 app.include_router(suggestions.router, prefix=settings.API_PREFIX, tags=["Suggestions"], dependencies=[Depends(get_current_user)])
 app.include_router(analytics.router, prefix=settings.API_PREFIX, tags=["Analytics"], dependencies=[Depends(get_current_user)])
+app.include_router(broker.router, prefix=settings.API_PREFIX, tags=["Broker"], dependencies=[Depends(get_current_user)])
 
 # The socket authenticates its own handshake (see backend/ws/routes.py): the
 # HTTP bearer dependency cannot run on a WebSocket upgrade.

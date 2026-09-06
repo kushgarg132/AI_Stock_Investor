@@ -20,6 +20,7 @@ PROTECTED_SAMPLE_PATHS = [
     ("POST", "/api/v1/agents/analyze/RELIANCE"),
     ("GET", "/api/v1/suggestions"),
     ("GET", "/api/v1/analytics/pnl"),
+    ("GET", "/api/v1/broker/kite/status"),
 ]
 
 

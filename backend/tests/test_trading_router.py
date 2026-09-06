@@ -228,3 +228,82 @@ def test_start_then_stop_round_trip(monkeypatch):
         assert stop_resp.status_code == 200
         assert stop_resp.json()["stopped"] is True
         assert run_id not in trading._RUNS
+
+
+# ---------------------------------------------------------------------------
+# Feed selection: Kite ticks when a broker session is live, polling otherwise
+# ---------------------------------------------------------------------------
+
+def _instruments():
+    return [Instrument(
+        exchange="NSE", tradingsymbol="RELIANCE", name="Reliance", instrument_token=1,
+        exchange_token=1, instrument_type="EQ", segment="NSE", lot_size=1, tick_size=0.05,
+    )]
+
+
+class _Session:
+    def __init__(self, state):
+        self._state = state
+
+    async def state(self):
+        return self._state
+
+    async def get_access_token(self):
+        return "kite-access-token"
+
+
+@pytest.mark.asyncio
+async def test_intraday_uses_kite_ticks_when_the_broker_is_connected(monkeypatch):
+    from backend.auth.kite_session import KiteSessionState
+    from backend.data.feeds.live_kite import KiteTickerFeed
+
+    monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.ACTIVE))
+    monkeypatch.setattr(trading, "db", _FakeDb)
+
+    feed = await trading.build_feed(_instruments(), "INTRADAY", 60.0)
+
+    assert isinstance(feed, KiteTickerFeed)
+
+
+@pytest.mark.asyncio
+async def test_intraday_falls_back_to_polling_without_a_broker_session(monkeypatch):
+    from backend.auth.kite_session import KiteSessionState
+    from backend.data.feeds.polling_live import PollingLiveFeed
+
+    monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.NEEDS_LOGIN))
+    monkeypatch.setattr(trading, "db", _FakeDb)
+
+    feed = await trading.build_feed(_instruments(), "INTRADAY", 60.0)
+
+    assert isinstance(feed, PollingLiveFeed)
+
+
+@pytest.mark.asyncio
+async def test_longterm_never_uses_the_tick_feed(monkeypatch):
+    """Daily bars have nothing to gain from tick aggregation, and requiring a
+    broker login to run a long-term strategy would be a regression."""
+    from backend.auth.kite_session import KiteSessionState
+    from backend.data.feeds.polling_live import PollingLiveFeed
+
+    monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.ACTIVE))
+    monkeypatch.setattr(trading, "db", _FakeDb)
+
+    feed = await trading.build_feed(_instruments(), "LONGTERM", 60.0)
+
+    assert isinstance(feed, PollingLiveFeed)
+
+
+def test_start_refuses_when_live_trading_is_switched_on(monkeypatch):
+    """The flag promises real orders; nothing implements them, so refusing is
+    the only honest answer."""
+    monkeypatch.setattr(trading.settings, "TRADING_LIVE_ENABLED", True)
+
+    app = FastAPI()
+    app.include_router(trading.router, prefix="/api/v1")
+    app.dependency_overrides[get_current_user] = lambda: _USER
+    app.dependency_overrides[trading.get_run_store] = lambda: RunStore(_FakeDb.db)
+
+    with TestClient(app) as test_client:
+        resp = test_client.post("/api/v1/trading/start", json={"mode": "LONGTERM"})
+
+    assert resp.status_code == 501
