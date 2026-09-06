@@ -15,6 +15,20 @@ router = APIRouter()
 _provider = YFinanceProvider()
 
 
+def _favicon_url(website_or_domain: str) -> str:
+    """logo.clearbit.com's free logo API is dead (DNS no longer resolves --
+    Clearbit shut it down after the HubSpot acquisition), so every logo_url
+    built from it 404'd/broken-imaged in the UI. Google's favicon service
+    has no such account/key requirement and returns a real image (a generic
+    globe placeholder when it has nothing better) for any domain, so an
+    <img> tag never renders as broken."""
+    domain = (
+        website_or_domain.replace("https://", "").replace("http://", "")
+        .replace("www.", "").strip("/").split("/")[0]
+    )
+    return f"https://www.google.com/s2/favicons?sz=128&domain={domain}"
+
+
 class StockInfoRequest(BaseModel):
     symbol: str
 
@@ -69,6 +83,7 @@ async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
             day_change_percent=day_change_percent,
             volume=info.get("regularMarketVolume"),
             currency=currency,
+            logo_url=_favicon_url(f"{instrument.tradingsymbol.lower()}.com"),
         )
         logger.info(f"Stock info fetch complete for {ticker_symbol} (via history)")
         return company_info
@@ -96,10 +111,8 @@ async def fetch_stock_info_logic(symbol: str) -> CompanyInfo:
         dividend_yield=info.get("dividendYield"),
         beta=info.get("beta"),
         currency=info.get("currency", currency),
-        logo_url=info.get("logo_url") or (
-            f"https://logo.clearbit.com/{info['website'].replace('https://', '').replace('http://', '').replace('www.', '').strip('/').split('/')[0]}"
-            if info.get("website") else
-            f"https://logo.clearbit.com/{instrument.tradingsymbol.lower()}.com"  # Last resort fallback
+        logo_url=info.get("logo_url") or _favicon_url(
+            info["website"] if info.get("website") else f"{instrument.tradingsymbol.lower()}.com"
         ),
 
         # Extended Fundamentals

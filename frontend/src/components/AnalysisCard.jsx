@@ -36,6 +36,7 @@ const AnalysisCard = ({ quick, ai, aiLoading, aiError, aiRequested, onOpenAiTab 
   const [tab, setTab] = useState('overview');
   const [watched, setWatched] = useState(false);
   const [watchError, setWatchError] = useState(null);
+  const [failedLogoUrl, setFailedLogoUrl] = useState(null);
 
   if (!quick) return null;
 
@@ -76,10 +77,11 @@ const AnalysisCard = ({ quick, ai, aiLoading, aiError, aiRequested, onOpenAiTab 
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-start gap-3 min-w-0">
             <div className="w-11 h-11 shrink-0 border border-[var(--rule-strong)] bg-[var(--paper-sunk)] flex items-center justify-center overflow-hidden">
-              {company?.logo_url ? (
+              {company?.logo_url && company.logo_url !== failedLogoUrl ? (
                 <img
                   src={company.logo_url}
                   alt=""
+                  onError={() => setFailedLogoUrl(company.logo_url)}
                   className="w-full h-full object-contain p-1"
                 />
               ) : (
