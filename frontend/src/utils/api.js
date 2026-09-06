@@ -17,26 +17,79 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  // The refresh token rides in an httpOnly cookie -- the browser only
+  // attaches/accepts it on a request made with credentials, cross-site
+  // (Vercel -> nip.io) included.
+  withCredentials: true,
 });
 
 const TOKEN_STORAGE_KEY = 'asi_token';
 
+// Requests that must never trigger a refresh attempt on failure: refreshing
+// itself would recurse, and a failed Google login is a real login failure,
+// not an expired session to silently paper over.
+const NO_REFRESH_PATHS = ['/auth/google', '/auth/refresh'];
+
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
-  if (token && config.url !== '/auth/google') {
+  if (token && !NO_REFRESH_PATHS.includes(config.url)) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
+/**
+ * At most one refresh in flight at a time -- several requests can 401
+ * together (e.g. the dashboard's parallel fetch-on-mount), and they all
+ * await the same attempt rather than each spending the refresh cookie's one
+ * rotation.
+ */
+let refreshPromise = null;
+
+export const refreshAccessToken = async () => {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+      .then((res) => {
+        localStorage.setItem(TOKEN_STORAGE_KEY, res.data.token);
+        return res.data.token;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
+};
+
+const hardLogout = () => {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  if (window.location.pathname !== '/login') {
+    window.location.assign('/login');
+  }
+};
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-      if (window.location.pathname !== '/login') {
-        window.location.assign('/login');
+  async (error) => {
+    const { config, response } = error;
+    const status = response?.status;
+    const isAuthFailure = status === 401 || status === 403;
+    const eligibleForRefresh = config && !NO_REFRESH_PATHS.includes(config.url) && !config._retriedAfterRefresh;
+
+    if (isAuthFailure && eligibleForRefresh) {
+      try {
+        const newToken = await refreshAccessToken();
+        config._retriedAfterRefresh = true;
+        config.headers.Authorization = `Bearer ${newToken}`;
+        return api.request(config);
+      } catch {
+        hardLogout();
+        return Promise.reject(error);
       }
+    }
+
+    if (isAuthFailure) {
+      hardLogout();
     }
     return Promise.reject(error);
   }
@@ -97,6 +150,7 @@ export const endpoints = {
   },
   auth: {
     google: '/auth/google',
+    refresh: '/auth/refresh',
     logout: '/auth/logout',
     me: '/auth/me',
   },

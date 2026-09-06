@@ -37,3 +37,10 @@ def test_auth_routes_do_not_require_authentication():
     # firing on the wrong route). Either way this must not need a bearer
     # token itself to be reachable.
     assert resp.status_code in (200, 401)
+
+
+def test_refresh_does_not_require_a_bearer_token_either():
+    # /auth/refresh works from an expired access token by design -- it must
+    # be reachable with no Authorization header at all, same as /auth/google.
+    resp = client.post("/api/v1/auth/refresh")
+    assert resp.status_code == 401  # "no refresh cookie", not "no bearer token"

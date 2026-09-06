@@ -43,8 +43,17 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: Optional[str] = None
 
     # Session JWT (bearer token, not a cookie -- see auth design spec).
+    # Short-lived on purpose: a stolen access token (XSS, a logged request,
+    # a compromised extension) is only useful for this long. Silent renewal
+    # is REFRESH_TOKEN's job, not a long access-token lifetime's.
     JWT_SECRET: str = "change-me-in-production"
-    SESSION_MAX_AGE_SECONDS: int = 604800  # 7 days
+    SESSION_MAX_AGE_SECONDS: int = 1800  # 30 minutes
+
+    # Long-lived refresh token (httpOnly cookie, never touches JS). Opaque
+    # and DB-backed (backend/auth/refresh_store.py) rather than a second
+    # JWT, specifically so it can be revoked before it naturally expires.
+    REFRESH_TOKEN_MAX_AGE_SECONDS: int = 60 * 24 * 3600  # 60 days
+    REFRESH_COOKIE_NAME: str = "asi_refresh"
 
     # Explicit CORS allowlist -- replaces allow_origins=["*"], which is an
     # invalid combination with allow_credentials=True for real credentialed

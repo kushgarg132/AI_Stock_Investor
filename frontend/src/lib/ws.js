@@ -1,4 +1,19 @@
-import { AUTH_TOKEN_STORAGE_KEY } from '../utils/api';
+import { AUTH_TOKEN_STORAGE_KEY, refreshAccessToken } from '../utils/api';
+
+/**
+ * Cheap client-side peek at a JWT's own `exp` claim -- no signature check,
+ * just enough to avoid opening a socket with a token that's already dead
+ * and immediately getting closed for it. A 30s buffer covers the time the
+ * handshake itself takes.
+ */
+const isExpired = (token) => {
+  try {
+    const { exp } = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return !exp || exp * 1000 < Date.now() + 30000;
+  } catch {
+    return true;
+  }
+};
 
 /**
  * One socket for the whole app.
@@ -27,21 +42,42 @@ class Stream {
     this.attempt = 0;
     this.retryTimer = null;
     this.intentionallyClosed = false;
+    this.connecting = false;
   }
 
   connect() {
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) {
       return;
     }
-    const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-    if (!token) return;
+    if (this.connecting) return;
+    this.connecting = true;
 
+    (async () => {
+      let token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+      if (!token || isExpired(token)) {
+        try {
+          token = await refreshAccessToken();
+        } catch {
+          // No live session (never logged in, or the refresh cookie is
+          // gone too) -- nothing to connect with. A later subscribe() call
+          // or login will call connect() again.
+          this.connecting = false;
+          return;
+        }
+      }
+      this._open(token);
+      this.connecting = false;
+    })();
+  }
+
+  _open(token) {
     this.intentionallyClosed = false;
     this.setStatus(this.attempt === 0 ? 'connecting' : 'reconnecting');
 
     // The token rides in the query string because a browser cannot set an
     // Authorization header on a WebSocket handshake, and this app holds its
-    // session token in localStorage rather than a cookie.
+    // access token in localStorage rather than a cookie (the refresh token
+    // is the one that lives in a cookie -- see utils/api.js).
     const socket = new WebSocket(`${SOCKET_URL}?token=${encodeURIComponent(token)}`);
     this.socket = socket;
 

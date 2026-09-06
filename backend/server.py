@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend.auth.dependency import get_current_user
+from backend.auth.refresh_store import RefreshTokenStore
 from backend.auth.store import UserStore
 from backend.configs.settings import settings
 from backend.runs import RunStore
@@ -61,6 +62,7 @@ async def startup_db_client():
     master = InstrumentMaster(db.db)
     await master.ensure_indexes()
     await UserStore(db.db).ensure_indexes()
+    await RefreshTokenStore(db.db).ensure_indexes()
     count = await refresh_instruments(SeedFileSource(), master)
     logger.info(f"Instrument master seeded: {count} upserted.")
 

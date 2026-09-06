@@ -10,11 +10,12 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         let cancelled = false;
         (async () => {
-            const token = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-            if (!token) {
-                if (!cancelled) setLoading(false);
-                return;
-            }
+            // No early-return on a missing/expired local access token: the
+            // long-lived refresh cookie may still be good from a previous
+            // visit, and api.js's response interceptor silently refreshes
+            // and retries this call on a 401/403 -- that's the whole
+            // mechanism that keeps a returning user from seeing the Google
+            // button again.
             try {
                 const res = await api.get(endpoints.auth.me);
                 if (!cancelled) setUser(res.data);
@@ -36,7 +37,13 @@ export const AuthProvider = ({ children }) => {
         setUser(res.data.user);
     };
 
-    const logout = () => {
+    const logout = async () => {
+        try {
+            await api.post(endpoints.auth.logout);
+        } catch {
+            // The server-side revocation is best-effort from the client's
+            // point of view -- the local session ends either way.
+        }
         localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
         setUser(null);
     };
