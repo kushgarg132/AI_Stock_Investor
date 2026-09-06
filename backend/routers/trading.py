@@ -30,6 +30,7 @@ from backend.data.providers.yfinance_provider import YFinanceProvider
 from backend.data.feeds.polling_live import PollingLiveFeed
 from backend.engine.execution.simulated import SimulatedExecutionClient
 from backend.engine.persistence import LedgerStore
+from backend.ws.publish import publisher_for
 from backend.engine.portfolio import Portfolio
 from backend.engine.runner import run
 from backend.runs import RunStore
@@ -49,7 +50,7 @@ _MODE_TIMEFRAME = {"INTRADAY": "5m", "LONGTERM": "1d"}
 
 
 def get_ledger_store(user: User = Depends(get_current_user)) -> LedgerStore:
-    return LedgerStore(db.db, user_id=user.id)
+    return LedgerStore(db.db, user_id=user.id, on_change=publisher_for(user.id))
 
 
 def get_run_store() -> RunStore:
@@ -156,7 +157,7 @@ async def start_trading(
     )
     execution = SimulatedExecutionClient()
     portfolio = Portfolio()
-    ledger = LedgerStore(db.db, user_id=user.id, run_id=run_id)
+    ledger = LedgerStore(db.db, user_id=user.id, run_id=run_id, on_change=publisher_for(user.id))
 
     # INTRADAY orders execute themselves; LONGTERM ones stop at a PENDING
     # suggestion and wait for the user to approve or reject them.

@@ -18,6 +18,7 @@ from backend.auth.models import User
 from backend.database import db
 from backend.data.providers.yfinance_provider import YFinanceProvider
 from backend.engine.persistence import LedgerStore
+from backend.ws.publish import publisher_for
 from backend.instruments.master import InstrumentMaster
 from backend.prefs import PrefsStore
 from backend.suggestions.scan import scan_universe
@@ -35,7 +36,7 @@ def get_suggestion_store() -> SuggestionStore:
 
 
 def get_ledger_store(user: User = Depends(get_current_user)) -> LedgerStore:
-    return LedgerStore(db.db, user_id=user.id)
+    return LedgerStore(db.db, user_id=user.id, on_change=publisher_for(user.id))
 
 
 async def _live_mark_price(symbol: str) -> float:

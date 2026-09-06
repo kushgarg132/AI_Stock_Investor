@@ -10,6 +10,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from backend.ws.hub import hub
+
 PENDING = "PENDING"
 DECIDED_STATUSES = ("APPROVED", "REJECTED", "EXPIRED", "EXECUTED")
 
@@ -63,7 +65,9 @@ class SuggestionStore:
             "order_id": None,
         }
         await self.collection.insert_one(dict(doc))
-        return _clean(doc)
+        clean = _clean(doc)
+        await hub.publish(user_id, "suggestions", "created", clean)
+        return clean
 
     async def get(self, user_id: str, suggestion_id: str) -> Optional[dict]:
         doc = await self.collection.find_one({"user_id": user_id, "id": suggestion_id})
@@ -113,12 +117,15 @@ class SuggestionStore:
         )
         if result is None:
             return None
-        return await self.get(user_id, suggestion_id)
+        decided = await self.get(user_id, suggestion_id)
+        await hub.publish(user_id, "suggestions", "decided", decided)
+        return decided
 
     async def attach_thesis(self, user_id: str, suggestion_id: str, thesis: str) -> None:
         await self.collection.update_one(
             {"user_id": user_id, "id": suggestion_id}, {"$set": {"ai_thesis": thesis}}
         )
+        await hub.publish(user_id, "suggestions", "enriched", await self.get(user_id, suggestion_id))
 
     async def expire_stale(self, now: Optional[datetime] = None) -> int:
         now = now or datetime.now(timezone.utc)

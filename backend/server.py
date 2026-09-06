@@ -15,6 +15,8 @@ from backend.runs import RunStore
 from backend.suggestions.store import SuggestionStore
 from backend.prefs import PrefsStore
 from backend import scheduler
+from backend.ws import pump as ws_pump
+from backend.ws import routes as ws_routes
 from backend.configs.logging_config import setup_logging
 from backend.database import db
 from backend.instruments.master import InstrumentMaster
@@ -67,6 +69,8 @@ async def startup_db_client():
 
     # Post-close scan, sentiment refresh and suggestion expiry.
     scheduler.start(db.db, db.redis)
+    # Live prices and P&L for whoever has a socket open.
+    ws_pump.start(db.db)
 
     # An asyncio.Task cannot outlive the process that created it, so any run
     # still marked RUNNING belongs to a previous life of this container.
@@ -115,6 +119,10 @@ app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlis
 app.include_router(trading.router, prefix=settings.API_PREFIX, tags=["Trading"], dependencies=[Depends(get_current_user)])
 app.include_router(suggestions.router, prefix=settings.API_PREFIX, tags=["Suggestions"], dependencies=[Depends(get_current_user)])
 app.include_router(analytics.router, prefix=settings.API_PREFIX, tags=["Analytics"], dependencies=[Depends(get_current_user)])
+
+# The socket authenticates its own handshake (see backend/ws/routes.py): the
+# HTTP bearer dependency cannot run on a WebSocket upgrade.
+app.include_router(ws_routes.router, prefix=settings.API_PREFIX, tags=["Live"])
 
 @app.get("/docs", include_in_schema=False)
 async def redirect_docs():

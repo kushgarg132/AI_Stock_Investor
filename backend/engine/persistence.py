@@ -20,9 +20,13 @@ from backend.core.models import Fill, Order, Position
 
 
 class LedgerStore:
-    def __init__(self, db, user_id: str, run_id: Optional[str] = None) -> None:
+    def __init__(self, db, user_id: str, run_id: Optional[str] = None, on_change=None) -> None:
         self.user_id = user_id
         self.run_id = run_id
+        # Injected rather than imported: the engine must not know a socket
+        # exists. The trading routes pass one that publishes to the live hub;
+        # backtests pass nothing.
+        self.on_change = on_change
         self.orders = db["paper_orders"]
         self.fills = db["paper_fills"]
         self.positions = db["paper_positions"]
@@ -30,6 +34,10 @@ class LedgerStore:
 
     def _stamp(self, doc: dict) -> dict:
         return {**doc, "user_id": self.user_id, "run_id": self.run_id}
+
+    async def _emit(self, topic: str, event: str, data) -> None:
+        if self.on_change is not None:
+            await self.on_change(topic, event, data)
 
     async def ensure_indexes(self) -> None:
         await self.orders.create_index([("user_id", 1), ("id", 1)], unique=True)
@@ -54,6 +62,10 @@ class LedgerStore:
                 {"$set": self._stamp(position.model_dump())},
                 upsert=True,
             )
+        await self._emit(
+            "positions", "changed",
+            {symbol: position.model_dump() for symbol, position in positions.items()},
+        )
 
     async def get_open_positions(self) -> dict[str, Position]:
         cursor = self.positions.find({"user_id": self.user_id, "quantity": {"$ne": 0}})
@@ -94,7 +106,14 @@ class LedgerStore:
         """
         await self.record_fill(fill)
         await self.mark_filled(fill.order_id)
+        await self._advance_trade(fill, quantity_before, position)
 
+        latest = await self.trades.find_one(
+            {"user_id": self.user_id, "symbol": fill.symbol}, sort=[("entry_at", -1)]
+        )
+        await self._emit("trades", "changed", _clean_id(latest) if latest else {"symbol": fill.symbol})
+
+    async def _advance_trade(self, fill: Fill, quantity_before: float, position: Position) -> None:
         open_trade = await self.trades.find_one(
             {"user_id": self.user_id, "symbol": fill.symbol, "status": "OPEN"}
         )
@@ -165,6 +184,12 @@ class LedgerStore:
         cursor = self.orders.find(query)
         docs = await cursor.to_list(length=None)
         return [Order(**_clean(doc)) for doc in docs]
+
+
+def _clean_id(doc: dict) -> dict:
+    doc = dict(doc)
+    doc.pop("_id", None)
+    return doc
 
 
 def _clean(doc: dict) -> dict:
