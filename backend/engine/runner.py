@@ -219,6 +219,7 @@ async def run(
             portfolio.apply(fill)
             if ledger is not None:
                 await ledger.record_fill(fill)
+                await ledger.mark_filled(fill.order_id)
             owning_strategy = owner_by_symbol.get(fill.symbol)
             if owning_strategy is not None:
                 owning_strategy.on_fill(ctx, fill)

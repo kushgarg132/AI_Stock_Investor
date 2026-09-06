@@ -9,7 +9,9 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from backend.auth.dependency import get_current_user
+from backend.auth.store import UserStore
 from backend.configs.settings import settings
+from backend.runs import RunStore
 from backend.configs.logging_config import setup_logging
 from backend.database import db
 from backend.instruments.master import InstrumentMaster
@@ -51,8 +53,19 @@ async def startup_db_client():
     logger.info("Starting up AI Stock Investor API...")
     await db.connect_to_database()
     logger.info("Database connected.")
-    count = await refresh_instruments(SeedFileSource(), InstrumentMaster(db.db))
+    master = InstrumentMaster(db.db)
+    await master.ensure_indexes()
+    await UserStore(db.db).ensure_indexes()
+    count = await refresh_instruments(SeedFileSource(), master)
     logger.info(f"Instrument master seeded: {count} upserted.")
+
+    # An asyncio.Task cannot outlive the process that created it, so any run
+    # still marked RUNNING belongs to a previous life of this container.
+    runs = RunStore(db.db)
+    await runs.ensure_indexes()
+    orphaned = await runs.close_orphaned()
+    if orphaned:
+        logger.info(f"Closed {orphaned} orphaned trading run(s) from a previous process.")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

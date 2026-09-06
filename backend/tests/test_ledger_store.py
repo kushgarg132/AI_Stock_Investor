@@ -16,7 +16,7 @@ from backend.engine.persistence import LedgerStore
 @pytest.fixture
 def ledger():
     client = AsyncMongoMockClient()
-    return LedgerStore(client["test_db"])
+    return LedgerStore(client["test_db"], user_id="u1")
 
 
 def _order(**overrides) -> Order:

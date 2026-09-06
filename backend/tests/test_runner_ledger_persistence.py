@@ -86,7 +86,7 @@ async def test_runner_persists_orders_fills_and_positions_to_ledger():
     execution = SimulatedExecutionClient()
     portfolio = Portfolio()
     client = AsyncMongoMockClient()
-    ledger = LedgerStore(client["test_db"])
+    ledger = LedgerStore(client["test_db"], user_id="u1")
 
     await run(
         strategies=[_FirstBarBuyStrategy()], feed=feed, execution=execution,

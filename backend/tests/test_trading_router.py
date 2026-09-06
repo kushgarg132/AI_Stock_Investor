@@ -18,11 +18,19 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
+from backend.auth.dependency import get_current_user
+from backend.auth.models import User
 from backend.core.models import Fill, Position, Side
 from backend.engine.persistence import LedgerStore
 from backend.instruments.master import InstrumentMaster
 from backend.instruments.models import Instrument
 from backend.routers import trading
+from backend.runs import RunStore
+
+_USER = User(
+    id="u1", google_sub="sub-1", email="u1@example.com", name="U One",
+    picture=None, created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +73,7 @@ async def test_stop_unknown_run_id_returns_false():
 @pytest.fixture
 def ledger():
     client = AsyncMongoMockClient()
-    return LedgerStore(client["test_db"])
+    return LedgerStore(client["test_db"], user_id="u1")
 
 
 @pytest.fixture
@@ -148,8 +156,8 @@ class _ForeverQuoteProvider:
 
 
 class _FakeDb:
-    # A real (mongomock) database so LedgerStore(db.db) can construct its
-    # collections; this test never queries them, just proves start/stop.
+    # A real (mongomock) database so the router can build its stores;
+    # this test never queries them, just proves start/stop.
     db = AsyncMongoMockClient()["test_db"]
     redis = None
 
@@ -205,6 +213,8 @@ def test_start_then_stop_round_trip(monkeypatch):
 
     app = FastAPI()
     app.include_router(trading.router, prefix="/api/v1")
+    app.dependency_overrides[get_current_user] = lambda: _USER
+    app.dependency_overrides[trading.get_run_store] = lambda: RunStore(_FakeDb.db)
 
     with TestClient(app) as test_client:
         resp = test_client.post("/api/v1/trading/start", json={
