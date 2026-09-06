@@ -12,6 +12,7 @@ Same db-handle pattern as backend/database.py (a motor/mongomock-motor
 database passed in, not constructed here).
 """
 
+import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -25,6 +26,7 @@ class LedgerStore:
         self.orders = db["paper_orders"]
         self.fills = db["paper_fills"]
         self.positions = db["paper_positions"]
+        self.trades = db["paper_trades"]
 
     def _stamp(self, doc: dict) -> dict:
         return {**doc, "user_id": self.user_id, "run_id": self.run_id}
@@ -73,6 +75,88 @@ class LedgerStore:
         cursor = self.fills.find(query).sort("timestamp", 1)
         docs = await cursor.to_list(length=None)
         return [Fill(**_clean(doc)) for doc in docs]
+
+    # -----------------------------------------------------------------
+    # Trades: the round-trip view of the same fills. A fill is one
+    # execution; a trade spans from the first fill that opens a position
+    # to the one that flattens it, which is what "active vs completed"
+    # actually means to someone reading the dashboard.
+    # -----------------------------------------------------------------
+
+    async def on_fill(self, fill: Fill, quantity_before: float, position: Position) -> None:
+        """The single call the runner makes per fill: mirrors the fill, marks
+        its order filled, and advances the symbol's open trade.
+
+        `quantity_before` is the position size before Portfolio.apply consumed
+        this fill and `position` is the book afterwards -- together they say
+        whether this fill opened, grew, trimmed or closed the trade, without
+        this store having to re-derive the portfolio's own arithmetic.
+        """
+        await self.record_fill(fill)
+        await self.mark_filled(fill.order_id)
+
+        open_trade = await self.trades.find_one(
+            {"user_id": self.user_id, "symbol": fill.symbol, "status": "OPEN"}
+        )
+
+        if quantity_before == 0 or open_trade is None:
+            await self._open_trade(fill, position)
+            return
+
+        if position.quantity == 0:
+            await self.trades.update_one(
+                {"_id": open_trade["_id"]},
+                {"$set": {
+                    "status": "CLOSED",
+                    "exit_price": fill.price,
+                    "exit_at": fill.timestamp,
+                    "realized_pnl": position.realized_pnl,
+                    "costs": open_trade.get("costs", 0.0) + fill.costs,
+                }},
+            )
+            return
+
+        await self.trades.update_one(
+            {"_id": open_trade["_id"]},
+            {"$set": {
+                "quantity": abs(position.quantity),
+                "entry_price": position.avg_price,
+                "realized_pnl": position.realized_pnl,
+                "costs": open_trade.get("costs", 0.0) + fill.costs,
+            }},
+        )
+
+    async def _open_trade(self, fill: Fill, position: Position) -> None:
+        order = await self.orders.find_one({"user_id": self.user_id, "id": fill.order_id})
+        product = (order or {}).get("product", "MIS")
+
+        await self.trades.insert_one(self._stamp({
+            "id": str(uuid.uuid4()),
+            "symbol": fill.symbol,
+            "mode": "INTRADAY" if product == "MIS" else "LONGTERM",
+            "side": fill.side.value if hasattr(fill.side, "value") else fill.side,
+            "status": "OPEN",
+            "quantity": abs(position.quantity),
+            "entry_price": position.avg_price or fill.price,
+            "entry_at": fill.timestamp,
+            "exit_price": None,
+            "exit_at": None,
+            "realized_pnl": 0.0,
+            "costs": fill.costs,
+            "suggestion_id": (order or {}).get("suggestion_id"),
+        }))
+
+    async def get_trades(
+        self, status: Optional[str] = None, limit: int = 200
+    ) -> list[dict]:
+        query: dict = {"user_id": self.user_id}
+        if status is not None:
+            query["status"] = status
+        cursor = self.trades.find(query).sort("entry_at", -1).limit(limit)
+        docs = await cursor.to_list(length=None)
+        for doc in docs:
+            doc.pop("_id", None)
+        return docs
 
     async def get_orders(self, symbol: Optional[str] = None) -> list[Order]:
         query: dict = {"user_id": self.user_id}

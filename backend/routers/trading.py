@@ -214,6 +214,17 @@ async def get_fills(
     return [fill.model_dump(mode="json") for fill in fills]
 
 
+@router.get("/trades")
+async def get_trades(
+    status: Optional[Literal["OPEN", "CLOSED"]] = None,
+    limit: int = 200,
+    ledger: LedgerStore = Depends(get_ledger_store),
+):
+    """Round trips, not executions: `status=OPEN` is what the dashboard's
+    Active tab shows, `CLOSED` the Completed one."""
+    return await ledger.get_trades(status=status, limit=limit)
+
+
 @router.get("/equity")
 async def get_equity(ledger: LedgerStore = Depends(get_ledger_store)):
     positions = await ledger.get_open_positions()

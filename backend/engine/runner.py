@@ -216,10 +216,10 @@ async def run(
             await execution.submit(order)
 
         async for fill in execution.fills():
+            quantity_before = portfolio.positions[fill.symbol].quantity if fill.symbol in portfolio.positions else 0.0
             portfolio.apply(fill)
             if ledger is not None:
-                await ledger.record_fill(fill)
-                await ledger.mark_filled(fill.order_id)
+                await ledger.on_fill(fill, quantity_before, portfolio.positions[fill.symbol])
             owning_strategy = owner_by_symbol.get(fill.symbol)
             if owning_strategy is not None:
                 owning_strategy.on_fill(ctx, fill)
