@@ -12,6 +12,7 @@ from backend.auth.dependency import get_current_user
 from backend.auth.store import UserStore
 from backend.configs.settings import settings
 from backend.runs import RunStore
+from backend.suggestions.store import SuggestionStore
 from backend.configs.logging_config import setup_logging
 from backend.database import db
 from backend.instruments.master import InstrumentMaster
@@ -61,6 +62,8 @@ async def startup_db_client():
 
     # An asyncio.Task cannot outlive the process that created it, so any run
     # still marked RUNNING belongs to a previous life of this container.
+    await SuggestionStore(db.db).ensure_indexes()
+
     runs = RunStore(db.db)
     await runs.ensure_indexes()
     orphaned = await runs.close_orphaned()
@@ -98,10 +101,12 @@ app.include_router(settings_router.router, prefix=settings.API_PREFIX, tags=["Se
 from backend.routers import market_data
 from backend.routers import watchlist
 from backend.routers import trading
+from backend.routers import suggestions
 
 app.include_router(market_data.router, prefix=settings.API_PREFIX, tags=["Market Data"], dependencies=[Depends(get_current_user)])
 app.include_router(watchlist.router, prefix=settings.API_PREFIX, tags=["Watchlist"], dependencies=[Depends(get_current_user)])
 app.include_router(trading.router, prefix=settings.API_PREFIX, tags=["Trading"], dependencies=[Depends(get_current_user)])
+app.include_router(suggestions.router, prefix=settings.API_PREFIX, tags=["Suggestions"], dependencies=[Depends(get_current_user)])
 
 @app.get("/docs", include_in_schema=False)
 async def redirect_docs():

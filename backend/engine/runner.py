@@ -5,7 +5,8 @@ them -- this function and the Strategy contract it drives don't change.
 
 import logging
 import uuid
-from typing import Optional
+from dataclasses import dataclass
+from typing import Awaitable, Callable, Optional
 
 from backend.ai.sentiment import get_cached_sentiment
 from backend.components.risk.risk import RiskRules
@@ -16,9 +17,30 @@ from backend.engine.persistence import LedgerStore
 from backend.engine.portfolio import Portfolio
 from backend.engine.protocols import DataFeed, ExecutionClient, Strategy, StrategyContext
 from backend.engine.session import is_past_square_off_time
-from backend.scoring.composite import score_intent
+from backend.scoring.composite import CompositeScore, score_intent
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Proposal:
+    """A sized order plus the reasoning that produced it.
+
+    The Order alone is not enough for anything downstream that has to explain
+    itself to a person -- the conviction, the reason codes and the reference
+    entry all live on the Intent and the score, and are lost the moment
+    sizing hands back a bare Order.
+    """
+    order: Order
+    intent: Intent
+    score: CompositeScore
+    entry: float
+    mode: str
+
+
+# Returns True if the order should execute now, False if the sink took
+# ownership of it instead (see backend/suggestions/sink.py).
+OrderSink = Callable[[Proposal], Awaitable[bool]]
 
 # % of account risked per trade at full conviction (scored.final == 1.0),
 # scaled linearly down to 0 as conviction falls -- see size_intents' docstring.
@@ -33,6 +55,7 @@ async def size_intents(
     redis,
     account_size: float,
     max_exposure: float,
+    order_sink: Optional[OrderSink] = None,
 ) -> list[Order]:
     """Scores each Intent (backend.scoring.composite.score_intent, which
     caps AI's influence at AI_CAP regardless of what's passed here), then
@@ -97,9 +120,10 @@ async def size_intents(
         current_exposure += notional
 
         owning_strategy = owner_by_symbol.get(intent.symbol)
-        product = "MIS" if owning_strategy is not None and owning_strategy.spec.mode == "INTRADAY" else "CNC"
+        mode = owning_strategy.spec.mode if owning_strategy is not None else "LONGTERM"
+        product = "MIS" if mode == "INTRADAY" else "CNC"
 
-        orders.append(Order(
+        order = Order(
             id=str(uuid.uuid4()),
             symbol=intent.symbol,
             side=intent.side,
@@ -107,7 +131,14 @@ async def size_intents(
             order_type="MARKET",
             limit_price=None,
             product=product,
-        ))
+        )
+
+        if order_sink is not None:
+            proposal = Proposal(order=order, intent=intent, score=scored, entry=entry, mode=mode)
+            if not await order_sink(proposal):
+                continue  # the sink owns it now -- e.g. it became a suggestion
+
+        orders.append(order)
 
     return orders
 
@@ -160,6 +191,7 @@ async def run(
     account_size: float = 1_000_000.0,
     max_exposure: float = 1_000_000.0,
     ledger: Optional[LedgerStore] = None,
+    order_sink: Optional[OrderSink] = None,
 ) -> None:
     """`symbol_for_token` is not in the plan's pseudocode signature; it's
     needed because `Bar` identifies instruments by `instrument_token` while
@@ -207,6 +239,7 @@ async def run(
 
         orders = await size_intents(
             ctx.drain_intents(), portfolio, ctx, owner_by_symbol, redis, account_size, max_exposure,
+            order_sink=order_sink,
         )
         orders.extend(_square_off_orders(symbol, bar.timestamp, portfolio, owner_by_symbol))
 

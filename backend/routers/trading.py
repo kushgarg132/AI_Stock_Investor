@@ -35,6 +35,8 @@ from backend.engine.runner import run
 from backend.runs import RunStore
 from backend.instruments.master import InstrumentMaster
 from backend.strategies.registry import build_default_strategies
+from backend.suggestions.sink import SuggestionSink
+from backend.suggestions.store import SuggestionStore
 
 logger = logging.getLogger(__name__)
 
@@ -156,10 +158,15 @@ async def start_trading(
     portfolio = Portfolio()
     ledger = LedgerStore(db.db, user_id=user.id, run_id=run_id)
 
+    # INTRADAY orders execute themselves; LONGTERM ones stop at a PENDING
+    # suggestion and wait for the user to approve or reject them.
+    sink = SuggestionSink(SuggestionStore(db.db), user_id=user.id, run_id=run_id)
+
     coro = run(
         strategies=strategies, feed=feed, execution=execution, portfolio=portfolio,
         clock=SystemClock(), symbol_for_token=symbol_for_token, redis=db.redis,
         account_size=req.account_size, max_exposure=req.max_exposure, ledger=ledger,
+        order_sink=sink,
     )
     await runs.create(
         run_id=run_id, user_id=user.id, mode=req.mode,

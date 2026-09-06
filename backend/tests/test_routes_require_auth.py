@@ -18,6 +18,7 @@ PROTECTED_SAMPLE_PATHS = [
     ("GET", "/api/v1/trading/positions"),
     ("GET", "/api/v1/settings/omniroute-model"),
     ("POST", "/api/v1/agents/analyze/RELIANCE"),
+    ("GET", "/api/v1/suggestions"),
 ]
 
 
