@@ -1,13 +1,23 @@
 import axios from 'axios';
 
-let baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1';
-
-// Ensure baseUrl doesn't end with a slash for consistent appending
-baseUrl = baseUrl.replace(/\/$/, "");
-
-// Append /api/v1 if it's not already there
-if (!baseUrl.endsWith('/api/v1')) {
-  baseUrl = `${baseUrl}/api/v1`;
+// In production this must be same-origin (relative), not the backend's own
+// nip.io host: the refresh-token cookie is SameSite=None, which browsers
+// treat as third-party (and Safari/Firefox block by default) when the page
+// origin and the request origin differ. Routing through vercel.json's
+// /api/:path* rewrite keeps the browser talking to its own origin while
+// Vercel proxies the request server-side, making the cookie first-party.
+// (The WebSocket in lib/ws.js is exempt -- it authenticates via a query-param
+// token, not this cookie, and still connects straight to VITE_API_URL since
+// Vercel rewrites don't proxy WebSocket upgrades to an external host.)
+let baseUrl;
+if (import.meta.env.PROD) {
+  baseUrl = '/api/v1';
+} else {
+  baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8001/api/v1';
+  baseUrl = baseUrl.replace(/\/$/, "");
+  if (!baseUrl.endsWith('/api/v1')) {
+    baseUrl = `${baseUrl}/api/v1`;
+  }
 }
 
 const API_BASE_URL = baseUrl;
