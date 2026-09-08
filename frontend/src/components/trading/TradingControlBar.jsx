@@ -65,7 +65,7 @@ const TradingControlBar = ({
               onClick={() => onModeChange(item.id)}
               aria-pressed={mode === item.id}
               className={cn(
-                'flex-1 sm:flex-none px-4 py-2 font-[family-name:var(--font-narrow)] text-xs font-semibold uppercase tracking-[0.11em] transition-colors',
+                'flex-1 sm:flex-none min-h-11 sm:min-h-0 px-4 py-2 font-[family-name:var(--font-narrow)] text-xs font-semibold uppercase tracking-[0.11em] transition-colors',
                 mode === item.id
                   ? 'bg-[var(--ink)] text-[var(--paper)]'
                   : 'text-[var(--ink-soft)] hover:text-[var(--ink)]'

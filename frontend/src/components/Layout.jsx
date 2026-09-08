@@ -3,6 +3,7 @@ import Sidebar from './layout/Sidebar';
 import BottomNav from './layout/BottomNav';
 import Masthead from './layout/Masthead';
 import ChatWidget from './ChatWidget';
+import ErrorBoundary from './ErrorBoundary';
 import api, { endpoints } from '../utils/api';
 import { useTopic } from '../hooks/useStream';
 
@@ -40,7 +41,9 @@ const Layout = ({ children }) => {
 
       <div className="lg:pl-56">
         <Masthead noteNumber={noteNumber()} />
-        <main className="mx-auto max-w-6xl px-4 lg:px-8 py-5 pb-28 lg:pb-12">{children}</main>
+        <main className="mx-auto max-w-6xl px-4 lg:px-8 py-5 pb-28 lg:pb-12">
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </main>
       </div>
 
       <BottomNav pendingCount={pending} />

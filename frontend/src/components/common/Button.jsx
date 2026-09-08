@@ -16,11 +16,14 @@ const VARIANTS = {
     'bg-[var(--gain)] text-white border-[var(--gain)] hover:brightness-110',
 };
 
+// Mobile-first heights meet the 44px WCAG touch-target minimum; the sm:
+// breakpoint reverts to the original compact sizing once a mouse/trackpad
+// (not a fingertip) is the likely pointer.
 const SIZES = {
-  sm: 'h-8 px-3 text-[0.6875rem]',
-  md: 'h-10 px-4 text-xs',
+  sm: 'h-11 sm:h-8 px-3 text-[0.6875rem]',
+  md: 'h-11 sm:h-10 px-4 text-xs',
   lg: 'h-12 px-6 text-sm',
-  icon: 'h-9 w-9',
+  icon: 'h-11 w-11 sm:h-9 sm:w-9',
 };
 
 const Button = React.forwardRef(

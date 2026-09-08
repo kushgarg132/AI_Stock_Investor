@@ -119,7 +119,7 @@ const Suggestions = () => {
                     setShowDecided(false);
                   }}
                   className={cn(
-                    'flex-1 px-4 py-3 font-[family-name:var(--font-narrow)] text-xs font-semibold uppercase tracking-[0.11em] border-b-2 -mb-px transition-colors',
+                    'flex-1 min-h-11 sm:min-h-0 px-4 py-3 font-[family-name:var(--font-narrow)] text-xs font-semibold uppercase tracking-[0.11em] border-b-2 -mb-px transition-colors',
                     selected
                       ? 'border-[var(--stamp)] text-[var(--ink)]'
                       : 'border-transparent text-[var(--ink-soft)] hover:text-[var(--ink)]'

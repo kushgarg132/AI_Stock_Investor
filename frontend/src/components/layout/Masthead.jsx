@@ -66,7 +66,7 @@ const Masthead = ({ noteNumber }) => {
             <button
               type="button"
               onClick={toggle}
-              className="p-1.5 border border-[var(--rule)] text-[var(--ink-soft)] hover:text-[var(--ink)] hover:border-[var(--rule-strong)] transition-colors"
+              className="inline-flex items-center justify-center min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 border border-[var(--rule)] text-[var(--ink-soft)] hover:text-[var(--ink)] hover:border-[var(--rule-strong)] transition-colors"
               aria-label={theme === 'dark' ? 'Switch to the original sheet' : 'Switch to the carbon copy'}
             >
               {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

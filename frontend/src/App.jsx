@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import SystemArchitecturePage from './pages/SystemArchitecturePage';
 import RequireAuth from './components/RequireAuth';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import { Sheet, Empty } from './components/doc/Doc';
 import { useAuth } from './context/AuthContext';
 import { stream } from './lib/ws';
@@ -44,7 +45,16 @@ const App = () => {
     return undefined;
   }, [user]);
 
-  const gated = (element) => <RequireAuth>{element}</RequireAuth>;
+  // Two boundaries, not one: Layout's own (components/Layout.jsx) catches a
+  // crash in what a page renders, keeping the sidebar/nav shell alive so the
+  // user can navigate away. This outer one is the fallback for a crash in a
+  // page's own hooks/logic, before it ever reaches its `return <Layout>` --
+  // Layout never mounts in that case, so the inner boundary can't help.
+  const gated = (element) => (
+    <RequireAuth>
+      <ErrorBoundary>{element}</ErrorBoundary>
+    </RequireAuth>
+  );
 
   return (
     <Routes>
