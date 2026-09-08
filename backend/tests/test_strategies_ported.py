@@ -11,7 +11,10 @@ from backend.core.clock import SimClock
 from backend.core.models import Bar, Side
 from backend.engine.context import SimpleStrategyContext
 from backend.engine.portfolio import Portfolio
+from backend.strategies.intraday.orb_breakout import ORBStrategy
+from backend.strategies.intraday.rsi_momentum_scalp import RSIMomentumScalpStrategy
 from backend.strategies.intraday.volume_surge import VolumeSurgeStrategy
+from backend.strategies.intraday.vwap_reversion import VWAPReversionStrategy
 from backend.strategies.longterm.breakout import TechnicalBreakoutStrategy
 from backend.strategies.longterm.macd_crossover import MACDCrossoverStrategy
 from backend.strategies.longterm.mean_reversion import MeanReversionStrategy
@@ -214,6 +217,135 @@ def test_volume_surge_strategy_emits_sell_intent_on_down_bar():
 
 def test_volume_surge_strategy_silent_on_flat_bars():
     strategy = VolumeSurgeStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _flat_bars(25, timeframe="5m"))
+    assert intents == []
+
+
+# ---------------------------------------------------------------------------
+# VWAPReversionStrategy
+# ---------------------------------------------------------------------------
+
+def _vwap_reversion_bars(bullish: bool) -> list[Bar]:
+    """20 flat base bars (stable ~100 vwap) then a sharp move away from vwap,
+    then a final bar ticking back toward it -- the reversion signal."""
+    base = [100.0] * 20
+    if bullish:
+        move, tick = 95.0, 97.0  # drop 5%, then tick up (reverting toward vwap)
+    else:
+        move, tick = 105.0, 103.0  # spike 5%, then tick down
+    closes = base + [move, tick]
+    return _bars(closes, timeframe="5m")
+
+
+def test_vwap_reversion_strategy_emits_buy_intent():
+    strategy = VWAPReversionStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _vwap_reversion_bars(bullish=True))
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.BUY
+    assert intent.reason_codes == ["vwap_reversion"]
+
+
+def test_vwap_reversion_strategy_emits_sell_intent():
+    strategy = VWAPReversionStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _vwap_reversion_bars(bullish=False))
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.SELL
+    assert intent.reason_codes == ["vwap_reversion"]
+
+
+def test_vwap_reversion_strategy_silent_on_flat_bars():
+    strategy = VWAPReversionStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _flat_bars(25, timeframe="5m"))
+    assert intents == []
+
+
+# ---------------------------------------------------------------------------
+# ORBStrategy
+# ---------------------------------------------------------------------------
+
+def _orb_bars(bullish: bool) -> list[Bar]:
+    """3 opening-range bars (closes 100/101/99 -> or_high=102, or_low=98),
+    10 flat filler bars (so atr_14's 14-bar window is populated by the final
+    bar), then a final bar that clears the range on a volume spike."""
+    range_closes = [100.0, 101.0, 99.0]
+    filler = [100.0] * 10
+    breakout_close = 105.0 if bullish else 95.0
+    closes = range_closes + filler + [breakout_close]
+    volumes = [1000.0] * 13 + [5000.0]
+    return _bars(closes, volumes=volumes, timeframe="5m")
+
+
+def test_orb_strategy_emits_buy_intent_on_upside_breakout():
+    strategy = ORBStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _orb_bars(bullish=True))
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.BUY
+    assert intent.reason_codes == ["orb_breakout"]
+
+
+def test_orb_strategy_emits_sell_intent_on_downside_breakout():
+    strategy = ORBStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _orb_bars(bullish=False))
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.SELL
+    assert intent.reason_codes == ["orb_breakout"]
+
+
+def test_orb_strategy_silent_on_flat_bars():
+    strategy = ORBStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _flat_bars(25, timeframe="5m"))
+    assert intents == []
+
+
+# ---------------------------------------------------------------------------
+# RSIMomentumScalpStrategy
+# ---------------------------------------------------------------------------
+
+def _rsi_momentum_bullish_bars() -> list[Bar]:
+    """A gentle 18-bar decline (100 -> 91.5) followed by a sharp 2-bar rally
+    that flips RSI(14) from 51.8 to 69.0, crossing the 60 bull threshold,
+    with the final close (101.5) above ema_9 (95.6) -- verified against the
+    real Indicators math, not guessed."""
+    decline = [100.0 - i * 0.5 for i in range(18)]
+    rally = [decline[-1] + i * 5.0 for i in range(1, 3)]
+    return _bars(decline + rally, timeframe="5m")
+
+
+def test_rsi_momentum_scalp_strategy_emits_buy_intent():
+    strategy = RSIMomentumScalpStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _rsi_momentum_bullish_bars())
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.BUY
+    assert intent.reason_codes == ["rsi_momentum_scalp"]
+
+
+def test_rsi_momentum_scalp_strategy_emits_sell_intent():
+    bullish_bars = _rsi_momentum_bullish_bars()
+    # Mirror image: rally then sharp decline -> RSI flips 48.2 -> 31.0, crossing the 40 bear threshold.
+    closes = [200.0 - b.close for b in bullish_bars]
+    bars = _bars(closes, timeframe="5m")
+
+    strategy = RSIMomentumScalpStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, bars)
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.SELL
+    assert intent.reason_codes == ["rsi_momentum_scalp"]
+
+
+def test_rsi_momentum_scalp_strategy_silent_on_flat_bars():
+    strategy = RSIMomentumScalpStrategy([SYMBOL], {TOKEN: SYMBOL})
     intents = _run(strategy, _flat_bars(25, timeframe="5m"))
     assert intents == []
 
