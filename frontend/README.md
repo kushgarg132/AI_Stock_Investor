@@ -1,8 +1,15 @@
-# AI Stock Investor Frontend
+# NeoTrade Frontend
 
-Live Demo: [https://ai-stock-investor.vercel.app/](https://ai-stock-investor.vercel.app/)
+React 19 + Vite (plain JSX), Tailwind v4, React Router 7. Deployed on Vercel; the backend it
+talks to runs on the project's VM — see the root [`README.md`](../README.md) and
+[`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md).
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+In production the API base URL is the relative path `/api/v1`, proxied to the backend by the
+rewrite in `vercel.json`. That proxy is what keeps the refresh cookie first-party, so Safari
+and Firefox don't drop it — don't bypass it. The WebSocket connects to the backend directly,
+since Vercel rewrites don't proxy upgrades.
+
+This project was scaffolded from Vite's React template.
 
 Currently, two official plugins are available:
 

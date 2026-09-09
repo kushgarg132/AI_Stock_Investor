@@ -1,6 +1,6 @@
 ---
-name: AI Stock Investor
-description: A broker's contract note, kept live — paper-trading cockpit for NSE equities
+name: NeoTrade
+description: A broker's contract note, kept live — trading cockpit for Indian equities and F&O
 colors:
   paper:
     light: "#f4f4f1"
@@ -97,7 +97,7 @@ components:
     padding: "8px 0"
 ---
 
-# Design System: AI Stock Investor
+# Design System: NeoTrade
 
 ## Overview
 

@@ -1,154 +1,117 @@
-# AI Stock Investor
+# NeoTrade
 
 ![Dashboard Preview](assets/dashboard_preview.png)
 
-A comprehensive, agentic AI platform for autonomous stock analysis, trading simulation, and personalized investment insights. This system leverages a multi-agent architecture (Master, Analyst, Quant, Risk, Chat) to provide deep fundamental and technical analysis combined with strict risk management.
+A trading cockpit for Indian equities and F&O. A strategy engine watches a universe of
+instruments and emits **fully-formed trades** — size, entry reference, stop, target, the rule
+codes that fired, and a composite score — then either executes them (intraday) or routes them
+to an approval inbox (long-term). Each user connects their own broker account and chooses per
+strategy whether it trades on paper or with real money.
 
-## Live Demo
+The defining constraint: **the AI contribution to any trade's conviction is capped at 30% and
+cannot rescue a trade the rules did not already support.** That cap is enforced in the type
+system, not by convention.
 
-- **Frontend (UI)**: [https://ai-stock-investor.vercel.app/](https://ai-stock-investor.vercel.app/)
-- **Backend (API)**: [https://ai-stock-investor.onrender.com/](https://ai-stock-investor.onrender.com/api/v1/docs)
+## Documentation
 
----
+| Question | Document |
+|---|---|
+| What is this product, who uses it, what states matter? | [`PRODUCT.md`](PRODUCT.md) |
+| How does the code work, and where is it going? | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| What gets built next? | [`docs/ROADMAP.md`](docs/ROADMAP.md) |
+| Visual system | [`DESIGN.md`](DESIGN.md) |
 
-## 🚀 Key Features
+## Features
 
-### 🤖 Multi-Agent AI Core
+- **Rule strategy engine** — intraday and long-term strategies emitting scored, sized trade
+  intents; new strategies plug into a registry.
+- **Composite scoring with a hard AI ceiling** — rule conviction decides; the LLM can adjust
+  within 30% and never below the rule floor.
+- **Risk-aware sizing** — position size derived from account size, per-trade risk, and stop
+  distance, with exposure limits; never computed inside a strategy.
+- **Approval inbox** — long-term proposals wait for an explicit approve/reject and expire
+  after three days; intraday proposals execute automatically.
+- **Backtesting** — strategies replay through the same runner and execution simulator used
+  live, with Indian transaction costs modelled.
+- **Research and chat** — news/sentiment analysis and a tool-using assistant, both through a
+  self-hosted OmniRoute LLM gateway.
+- **Live market data** over WebSocket, with explicit live/stale/market-closed states.
 
-- **Master Agent**: Orchestrates the analysis workflow, synthesizing inputs from all sub-agents to make final Buy/Sell/Hold recommendations.
-- **Analyst Agent**: Scrapes and analyzes financial news and sentiment using LLMs (Google Gemini) to understand market mood.
-- **Quant Agent**: Performs rigorous technical analysis using TA-Lib (RSI, MACD, Bollinger Bands, Moving Averages) to identify trends and signals.
-- **Risk Agent**: Evaluates trades against predefined risk rules, position sizing constraints, and portfolio exposure limits.
-- **Chat Agent**: An interactive assistant that allows users to query stock data, ask for summaries, and get real-time insights via a chat interface.
+## Tech stack
 
-### 📊 Modern User Interface
+**Backend** — FastAPI (Python 3.11+), MongoDB (motor), Redis, pandas/numpy for the indicator
+toolkit, yfinance and Zerodha Kite Connect for market data, LangChain/LangGraph for the
+research and chat agents, pytest for tests.
 
-- **Interactive Dashboard**: Real-time view of market trends, indices (NIFTY 50, SENSEX), and top trending stocks.
-- **Deep Analysis Cards**: Detailed visualization of stock performance, including dynamic price charts, technical signals, and AI-generated reasoning.
-- **Stock Scanner**: dedicated tool to scan the market for bullish or bearish setups based on technical criteria.
-- **Investment Goals**: A specialized module to define and track personalized investment objectives.
-- **Smart Chat Widget**: Floating chat interface for instant AI assistance.
+**Frontend** — React 19 + Vite (plain JSX), Tailwind v4, React Router 7, recharts,
+framer-motion, axios.
 
-## 🛠️ Tech Stack
+**Infrastructure** — Docker Compose on an Oracle Cloud VM behind Nginx + Let's Encrypt for the
+backend; Vercel for the frontend. Both push-to-deploy from `main`.
 
-### Backend
+## Setup
 
-- **Framework**: FastAPI (Python 3.11+)
-- **AI/LLM**: LangChain, LangGraph, Google Gemini Pro
-- **Data Processing**: TA-Lib (Technical Analysis), yfinance (Market Data), BeautifulSoup (Web Scraping)
-- **Database**: MongoDB (Persistent Storage), Redis (Caching & Pub/Sub)
-- **Testing**: pytest (Unit & Integration Tests)
+### Docker (recommended)
 
-### Frontend
-
-- **Framework**: React.js (Vite)
-- **Styling**: Modern CSS3, Responsive Design
-- **State/API**: Axios, React Hooks
-
-### Infrastructure
-
-- **Containerization**: Docker, Docker Compose
-- **Deployment**: Render (Backend), Vercel (Frontend)
-
----
-
-## ⚙️ Installation & Setup
-
-### Prerequisites
-
-- Docker & Docker Compose (Recommended)
-- OR Python 3.11+, Node.js 18+, MongoDB, and Redis installed locally.
-- API Keys: Google Gemini API Key (Required), NewsAPI/FMP (Optional).
-
-### Option 1: Docker (Fastest)
-
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/kushgarg132/AI_Stock_Investor.git
-   cd AI_Stock_Investor
-   ```
-
-2. **Setup Environment Variables**
-   Create a `.env` file in the root directory:
-
-   ```env
-   GEMINI_API_KEY=your_gemini_key_here
-   MONGODB_URL=mongodb://mongo:27017
-   REDIS_URL=redis://redis:6379
-   ```
-
-3. **Run with Docker Compose**
-   ```bash
-   docker-compose up --build
-   ```
-   The backend will be available at `http://localhost:8000` and frontend at `http://localhost:5173`.
-
-### Option 2: Manual Setup
-
-#### Backend
-
-1. Navigate to `backend/`:
-   ```bash
-   cd backend
-   python -m venv .venv
-   source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-   pip install -r requirements.txt
-   ```
-2. Run the server (ensure Mongo/Redis are running):
-   ```bash
-   uvicorn server:app --reload --port 8000
-   ```
-
-#### Frontend
-
-1. Navigate to `frontend/`:
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-### 🧪 Running Tests
-
-To run the backend unit tests:
-
-1. Navigate to the `backend/` directory.
-2. Ensure your virtual environment is active.
-3. Run `pytest`:
-   ```bash
-   python -m pytest backend/tests
-   ```
-
----
-
-## 📂 Project Structure
-
-```
-AI_Stock_Investor/
-├── backend/
-│   ├── agents/          # Agent logic (Master, Quant, Analyst, etc.)
-│   ├── core/            # Core trading strategies and backtester
-│   ├── mcp_tools/       # Tools for data fetching and analysis
-│   ├── routers/         # FastAPI endpoints
-│   ├── tests/           # Unit tests (Agents, Tools, Routers)
-│   ├── configs/         # Settings and logging configurations
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/  # Reusable UI components (AnalysisCard, ChatWidget)
-│   │   ├── pages/       # Main pages (Dashboard, Scanner, Goals)
-│   │   └── utils/       # API integration
-│   └── package.json
-│
-└── docker-compose.yml   # Container orchestration
+```bash
+git clone https://github.com/kushgarg132/AI_Stock_Investor.git
+cd AI_Stock_Investor
+# create .env with the values below, then:
+docker compose up -d --build backend
 ```
 
-## 📄 API Documentation
+MongoDB and Redis are external (managed) services, not compose containers — point
+`MONGODB_URL` and `REDIS_URL` at them. Also required: `GOOGLE_CLIENT_ID`, `JWT_SECRET`,
+`CORS_ALLOWED_ORIGINS`, and `OMNIROUTE_API_KEY` + `OMNIROUTE_BASE_URL` for anything using the
+LLM. `KITE_API_KEY`/`KITE_API_SECRET` are optional — the app treats an unconfigured broker as
+a normal state, not an error.
 
-Once the backend is running, visit:
+The compose file also defines a `frontend` service for local development; production
+frontend is Vercel, so don't start it on the deployment host.
 
-- **Swagger UI**: `http://localhost:8000/api/v1/docs`
-- **ReDoc**: `http://localhost:8000/api/v1/redoc`
+### Manual
+
+```bash
+# backend (needs Mongo and Redis reachable)
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn server:app --reload --port 8001
+
+# frontend
+cd frontend
+npm install
+npm run dev
+```
+
+### Tests
+
+```bash
+cd backend && python -m pytest
+```
+
+## Project structure
+
+```
+backend/
+├── strategies/      # rule strategies (intraday, longterm) + registry
+├── scoring/         # composite score, AI cap, rule floor
+├── engine/          # runner, sizing, portfolio, execution, backtest, persistence
+├── suggestions/     # approval inbox: store, sink, scan, service
+├── auth/            # Google sign-in, JWT, refresh tokens, Kite session
+├── data/            # market data providers and feeds
+├── components/      # analyst/chat agents, shared models, risk rules
+├── research/        # LangGraph research agent
+├── routers/         # FastAPI endpoints
+└── tests/
+
+frontend/src/
+├── pages/           # Dashboard, Suggestions, Portfolio, Trading, Watchlist, Scanner, Settings
+├── components/      # layout + UI
+├── context/         # auth state
+└── utils/           # axios instance, interceptors, endpoints
+```
+
+## API documentation
+
+With the backend running: Swagger at `/api/v1/docs`, ReDoc at `/api/v1/redoc`.
