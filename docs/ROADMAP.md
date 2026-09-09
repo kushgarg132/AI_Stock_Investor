@@ -9,7 +9,7 @@ where to start — nothing else in this repo tracks it.
 
 | Phase | Goal | Blocked by | Status |
 |---|---|---|---|
-| 0 | Rename to NeoTrade | — | not started |
+| 0 | Rename to NeoTrade | — | **done 2026-09-09** |
 | 1 | Multi-tenancy security | — | not started |
 | 2 | Broker adapter layer | 1 | not started |
 | 3 | Safety rails + backtest gate | — | not started |
@@ -24,44 +24,49 @@ touches broker credentials**.
 
 ---
 
-## Phase 0 — Rename to NeoTrade
+## Phase 0 — Rename to NeoTrade — **done 2026-09-09**
 
-**Goal.** Remove the old name from code, config, docs, and infrastructure, so nothing
-inherits the naming debt.
+### Where things live now
 
-**Code identifiers** — these do not match a grep for the product name, and each logs every
-existing session out when changed, which is acceptable but should be deliberate:
+| | |
+|---|---|
+| Repo | `github.com/kushgarg132/NeoTrade` |
+| Working clone | `/home/ubuntu/projects/NeoTrade` |
+| Deploy clone | `/home/ubuntu/deploys/NeoTrade` |
+| Backend | `https://neotrade.161.118.167.148.nip.io` (port 8000, container `neotrade-backend`) |
+| Frontend | `https://neotrade-trading.vercel.app` (Vercel project `neotrade`, root dir `frontend`) |
+| Session keys | cookie `neotrade_refresh`, localStorage `neotrade_token` |
+| Runner labels | `self-hosted, neotrade` (the old `aistock` label still exists on runner id 2) |
 
-- `REFRESH_COOKIE_NAME = "asi_refresh"` — `backend/configs/settings.py:56`
-- `TOKEN_STORAGE_KEY = 'asi_token'` — `frontend/src/utils/api.js:36`
+`ai-stock-investor.vercel.app` remains an alias on the same project and still serves the
+current build — Vercel keeps the old project-name domain after a rename. It is still in the
+backend's CORS allowlist. Drop both when you are sure nothing points at it.
 
-**Strings and config:** `backend/configs/settings.py:7` (`PROJECT_NAME`),
-`backend/server.py:41-42,64,98,153`, `frontend/index.html:9`,
-`frontend/src/components/layout/Masthead.jsx:60`,
-`frontend/src/components/layout/Sidebar.jsx:17`, `frontend/src/pages/Login.jsx:31`,
-`frontend/src/index.css:2`, `docker-compose.yml:1,14,41`, `.github/workflows/ci.yml:85`,
-`_bmad/bmm/config.yaml:13`, `_bmad/core/config.yaml:7`.
+The old `ai-stock.161.118.167.148.nip.io` subdomain is gone: Nginx site removed, cert deleted.
 
-**Infrastructure — confirm each with the operator before running it:**
+### Still outstanding — needs a human
 
-- GitHub repo rename (git remotes keep working via GitHub's redirect, but fix them anyway).
-- Vercel project rename — orphans `.vercel/project.json` in both the repo root and
-  `frontend/`; both are linked to the same project.
-- New nip.io subdomain, Nginx site, and Certbot cert.
-- `frontend/vercel.json:5` rewrite destination — this proxy is what keeps the refresh cookie
-  first-party for Safari/Firefox, so getting it wrong breaks login silently.
-- The WebSocket host in `frontend/src/lib/ws.js` — exempt from the Vercel rewrite, points at
-  the backend directly.
-- `CORS_ALLOWED_ORIGINS` in `.env`.
-- Google Cloud Console → authorized JavaScript origins (add the new frontend origin).
-- Self-hosted runner label `aistock` and deploy path
-  `/home/ubuntu/deploys/AI_Stock_Investor` — `.github/workflows/deploy-backend.yml:29,37,58,63`.
-- The project table in this VM's `/home/ubuntu/CLAUDE.md`.
-- `render.yaml` looks like dead config from the pre-VM era — confirm, then delete.
+**Google Cloud Console → Credentials → the OAuth client → Authorized JavaScript origins:**
+add `https://neotrade-trading.vercel.app`. Until that is done, Google sign-in fails on the
+new frontend URL (it still works on the `ai-stock-investor.vercel.app` alias, which was
+already authorized). Nothing in the codebase can do this step.
 
-**Done when:** `rg -i "ai.stock.investor|asi_|onrender"` returns only intentional historical
-references; login works end to end on the new domain (a real sign-in, not just a health
-check); the deploy workflow completes a push-triggered deploy on the renamed repo.
+### Notes for whoever hits similar work later
+
+- Changing the compose project `name:` makes Compose treat the stack as new, so it will not
+  stop the old containers — the first deploy failed with `Bind for :::8000 failed: port is
+  already allocated` until `ai-stock-investor-backend` was removed by hand.
+- The runner label was added via
+  `gh api --method POST repos/.../actions/runners/2/labels -f "labels[]=neotrade"` *before*
+  the workflow started asking for it, so no deploy was ever stranded without a runner.
+- A repo rename does not disturb a registered self-hosted runner; it stayed online.
+- `vercel deploy` must run from the repo root, not `frontend/` — the project's Root Directory
+  is already `frontend`, so deploying from inside it fails with "Root Directory does not
+  exist".
+- A freshly-set `vercel.app` alias 302s to Vercel SSO for a minute or so before it settles
+  and serves publicly. That redirect is not a protection misconfiguration; wait and re-check.
+- Backend cold start blocks for ~60s seeding the instrument master before Uvicorn serves, so
+  an immediate health check after deploy returns 502. Poll rather than concluding failure.
 
 ---
 

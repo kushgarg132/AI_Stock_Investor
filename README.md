@@ -54,8 +54,8 @@ backend; Vercel for the frontend. Both push-to-deploy from `main`.
 ### Docker (recommended)
 
 ```bash
-git clone https://github.com/kushgarg132/AI_Stock_Investor.git
-cd AI_Stock_Investor
+git clone https://github.com/kushgarg132/NeoTrade.git
+cd NeoTrade
 # create .env with the values below, then:
 docker compose up -d --build backend
 ```
