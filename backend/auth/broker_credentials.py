@@ -27,6 +27,11 @@ class CredentialEncryptionUnavailable(RuntimeError):
 class BrokerCredentials:
     api_key: str
     api_secret: str
+    # Not every broker needs one -- Upstox's OAuth flow requires a
+    # registered redirect_uri alongside the client id/secret; Kite doesn't
+    # use one at all. Encrypted alongside the rest for simplicity even where
+    # it isn't itself secret.
+    extra: Optional[str] = None
 
 
 def fernet_from_settings() -> Optional[Fernet]:
@@ -62,23 +67,27 @@ class BrokerCredentialStore:
     async def ensure_indexes(self) -> None:
         await self.collection.create_index([("user_id", 1), ("broker", 1)], unique=True)
 
-    async def save(self, user_id: str, broker: str, api_key: str, api_secret: str) -> None:
+    async def save(
+        self, user_id: str, broker: str, api_key: str, api_secret: str, extra: Optional[str] = None,
+    ) -> None:
         if self._fernet is None:
             raise CredentialEncryptionUnavailable(
                 "CREDENTIAL_ENCRYPTION_KEY is not configured; refusing to store credentials"
             )
 
+        fields = {
+            "user_id": user_id,
+            "broker": broker,
+            "api_key_enc": self._fernet.encrypt(api_key.encode()).decode(),
+            "api_secret_enc": self._fernet.encrypt(api_secret.encode()).decode(),
+            "api_key_masked": _mask(api_key),
+            "updated_at": datetime.now(timezone.utc),
+        }
+        if extra is not None:
+            fields["extra_enc"] = self._fernet.encrypt(extra.encode()).decode()
+
         await self.collection.update_one(
-            {"user_id": user_id, "broker": broker},
-            {"$set": {
-                "user_id": user_id,
-                "broker": broker,
-                "api_key_enc": self._fernet.encrypt(api_key.encode()).decode(),
-                "api_secret_enc": self._fernet.encrypt(api_secret.encode()).decode(),
-                "api_key_masked": _mask(api_key),
-                "updated_at": datetime.now(timezone.utc),
-            }},
-            upsert=True,
+            {"user_id": user_id, "broker": broker}, {"$set": fields}, upsert=True,
         )
 
     async def get(self, user_id: str, broker: str) -> Optional[BrokerCredentials]:
@@ -89,9 +98,11 @@ class BrokerCredentialStore:
             raise CredentialEncryptionUnavailable(
                 "CREDENTIAL_ENCRYPTION_KEY is not configured; stored credentials cannot be read"
             )
+        extra_enc = doc.get("extra_enc")
         return BrokerCredentials(
             api_key=self._fernet.decrypt(doc["api_key_enc"].encode()).decode(),
             api_secret=self._fernet.decrypt(doc["api_secret_enc"].encode()).decode(),
+            extra=self._fernet.decrypt(extra_enc.encode()).decode() if extra_enc else None,
         )
 
     async def status(self, user_id: str, broker: str) -> dict:

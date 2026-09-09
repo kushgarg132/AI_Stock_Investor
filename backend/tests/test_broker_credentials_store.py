@@ -28,6 +28,25 @@ async def test_saved_credentials_round_trip_for_their_owner():
     assert creds.api_secret == "as-alice"
 
 
+async def test_extra_field_round_trips_for_brokers_that_need_one():
+    """Upstox needs a redirect_uri alongside its client id/secret; not every
+    broker does, so it's optional and defaults to None."""
+    store = _store()
+    await store.save(
+        "alice", "upstox", api_key="ak", api_secret="as", extra="https://app.example.com/callback",
+    )
+
+    creds = await store.get("alice", "upstox")
+    assert creds.extra == "https://app.example.com/callback"
+
+
+async def test_extra_defaults_to_none_when_not_given():
+    store = _store()
+    await store.save("alice", "kite", api_key="ak", api_secret="as")
+
+    assert (await store.get("alice", "kite")).extra is None
+
+
 async def test_one_users_credentials_are_invisible_to_another():
     store = _store()
     await store.save("alice", "kite", api_key="ak-alice", api_secret="as-alice")
