@@ -121,13 +121,25 @@ proposal executes. It returns `BacktestResult`
 (`backend/components/shared/models.py:59-71`). Note: `max_drawdown` and `sharpe_ratio` are
 hardcoded `0.0` (`backtest.py:94-95`) — they are not computed.
 
-### 1.7 Data and live updates
+### 1.7 Brokers, data, and live updates
 
-- Market data behind `MarketDataProvider` (`backend/data/protocols.py:7-9`), implemented by
-  `YFinanceProvider` and `KiteProvider`. This seam is already broker-agnostic for *data*.
+- **Broker adapters** live behind `BrokerAdapter` (`backend/brokers/protocol.py`): credential
+  and token lifecycle, market data, instrument listing, and the seam order placement
+  (Phase 5) slots into. Three adapters implement it, chosen per user by
+  `backend.brokers.registry.get_broker_adapter`: `KiteAdapter` (composes the pieces below,
+  no new behavior), `UpstoxAdapter`, and `AngelOneAdapter` (both real REST integrations, no
+  SDK dependency). `/broker/{broker}/*` (`backend/routers/broker.py`) exposes status,
+  login-url, connect, and disconnect for whichever broker the path names.
+- Underneath `KiteAdapter`: `MarketDataProvider` (`backend/data/protocols.py:7-9`), implemented
+  by `YFinanceProvider` and `KiteProvider`; `KiteSessionManager`
+  (`backend/auth/kite_session.py`, the one module outside `backend/brokers/` still importing
+  the `kiteconnect` SDK directly — reachable only from `backend/brokers/kite.py`); and
+  `KiteTickerFeed` (`backend/data/feeds/live_kite.py`), which now **is** wired into the live
+  intraday path via `BrokerAdapter.ticker_feed()`.
+- `UpstoxAdapter`/`AngelOneAdapter` don't implement streaming yet — `ticker_feed()` returns
+  `None` and the caller falls back to polling, same as no broker connected.
 - Feeds behind `DataFeed` (`backend/engine/protocols.py:45-46`): `HistoricalFeed`,
-  `PollingLiveFeed`, and `KiteTickerFeed` (`backend/data/feeds/live_kite.py`, **not wired
-  into any live path today**).
+  `PollingLiveFeed`, `KiteTickerFeed`.
 - One WebSocket, `GET /api/v1/ws` (`backend/ws/routes.py:60-86`), topic pub/sub through an
   in-process `Hub` (`backend/ws/hub.py:24-95`). A 15-second pump
   (`backend/ws/pump.py:22,26-53`) publishes marks and recomputed PnL; suggestion and run
@@ -184,14 +196,14 @@ Both sources emit `Intent` and pass through the same scoring cap and the same `R
 sizing. Neither may size its own positions, and neither may invent its own conviction
 formula — that is what made the old `RiskAgent` blend a liability.
 
-### 2.2 Broker adapter layer
+### 2.2 Broker adapter layer — built (Phase 2)
 
-One `BrokerAdapter` protocol covering three concerns that today are tangled together:
-credential and token lifecycle, market data, and order placement. Kite is ported onto it
-first; Upstox and Angel One (SmartAPI) follow without further architecture change.
-
-Every adapter instance is **per user**, constructed from that user's own stored
-credentials — never from process-global settings. Token caches are keyed by user id.
+`backend/brokers/protocol.py`'s `BrokerAdapter` now exists, implemented by `KiteAdapter`,
+`UpstoxAdapter`, and `AngelOneAdapter` (`backend/brokers/`), chosen per user by
+`backend.brokers.registry.get_broker_adapter`. Every adapter instance is per user,
+constructed from that user's own stored, encrypted credentials — never from process-global
+settings — and token caches are keyed by user id (`broker:{user_id}:{broker}:access_token`).
+Order placement is the one protocol method with no real implementation yet — that's Phase 5.
 
 ### 2.3 Execution
 
@@ -233,8 +245,8 @@ the first extra user.
 | Gap (§1.9 / §1.8) | Closed by |
 |---|---|
 | Shared-credential write hole; no admin role | Phase 1 (done) |
-| One broker session per deployment | Phase 1 (done); generalized to more brokers in Phase 2 |
-| Kite called directly throughout | Phase 2 |
+| One broker session per deployment | Phase 1 (done); generalized to more brokers in Phase 2 (done) |
+| Kite called directly throughout | Phase 2 (done) |
 | No kill-switch, no capital caps, no backtest gate; drawdown/Sharpe uncomputed | Phase 3 |
 | Three intraday strategies unregistered | Phase 4 |
 | No real order execution; equities-only instrument model | Phase 5 |

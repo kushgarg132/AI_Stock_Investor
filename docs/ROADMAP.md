@@ -11,7 +11,7 @@ where to start — nothing else in this repo tracks it.
 |---|---|---|---|
 | 0 | Rename to NeoTrade | — | **done 2026-09-09** |
 | 1 | Multi-tenancy security | — | **done 2026-09-09** |
-| 2 | Broker adapter layer | 1 | not started |
+| 2 | Broker adapter layer | 1 | **done 2026-09-09** |
 | 3 | Safety rails + backtest gate | — | not started |
 | 4 | Wire the three intraday strategies | 3 | not started |
 | 5 | Live execution + F&O | 1, 2, 3 | not started |
@@ -107,20 +107,55 @@ credential must be re-entered.
 
 ---
 
-## Phase 2 — Broker adapter layer
+## Phase 2 — Broker adapter layer — **done 2026-09-09**
 
-**Goal.** One interface, three brokers.
+`backend/brokers/protocol.py` defines `BrokerAdapter`; three adapters implement it.
+`KiteAdapter` is pure composition of the pieces that already existed and were already
+tested (`KiteSessionManager`, `KiteProvider`, `KiteInstrumentSource`, `KiteTickerFeed`) — no
+behavior change. `UpstoxAdapter` and `AngelOneAdapter` are new, real REST integrations (no
+SDK, plain `httpx`) against each broker's documented API, verified live against their
+published docs and — for Angel One, whose docs page is JS-rendered and unfetchable — the
+official `smartapi-python` SDK source directly. Each adapter file's docstring states exactly
+what was checked, since (as with the original Kite integration) no live account exists to
+test any of the three against for real.
 
-**Work:** define `BrokerAdapter` covering credential/token lifecycle, market data, and order
-placement. Port Kite onto it (`backend/data/providers/kite_provider.py`,
-`backend/data/feeds/live_kite.py`, `backend/auth/kite_session.py`,
-`backend/instruments/kite_source.py`). Add Upstox and Angel One (SmartAPI). Keep the
-existing `MarketDataProvider` seam (`backend/data/protocols.py:7-9`) — it already works;
-the adapter composes with it rather than replacing it.
+`backend.brokers.registry.get_broker_adapter(broker, user_id, credentials, redis)` is the
+one place that knows which brokers exist. `/broker/kite/*` became `/broker/{broker}/*`;
+`/trading/start`'s intraday tick-feed selection and the instrument-master refresh on connect
+both go through the registry now, so a connected Upstox or Angel One session gets the same
+treatment Kite alone used to.
 
-**Done when:** a user can connect any of the three brokers from Settings and receive live
-marks through it; no module outside the adapter package imports a broker SDK; adding a
-fourth broker requires no change outside its own adapter file.
+### Two real design frictions, handled rather than hidden
+
+- **Instrument identity isn't shared across brokers.** Kite's `instrument_token` is a
+  proprietary numeric ID; Upstox's real query key is an ISIN-based string
+  (`NSE_EQ|INE...`); Angel One has its own numeric `token`. A row in the shared
+  `instruments` collection, populated by whichever broker last refreshed it, cannot be
+  handed to a different broker's API. `UpstoxAdapter`/`AngelOneAdapter` resolve their own
+  broker-native key internally, from a cached scrip-master lookup keyed by
+  `(exchange, tradingsymbol)`, rather than trusting the `Instrument.instrument_token` they
+  were passed.
+- **The connect flow has two genuinely different shapes.** Kite and Upstox redirect the
+  user and exchange a short-lived code. Angel One has no redirect: the human submits a
+  client code, account password, and a fresh TOTP directly, and only the app-level API key
+  is worth storing long-term. `BrokerAdapter.connect(**fields)` plus
+  `login_url() -> Optional[str]` (null means "show the credential form, not a redirect
+  button") cover both without either adapter faking the other's shape.
+
+### Where the done-when criteria stand
+
+- A user can connect any of the three brokers from Settings' broker picker — verified.
+- Adding a fourth broker means one new adapter file plus one line in `BROKERS` — verified
+  by `test_broker_registry.py`.
+- No module *outside the adapter package* imports a broker SDK, with one named exception:
+  `backend/auth/kite_session.py` still imports `kiteconnect` directly. It was left in place
+  rather than moved into `backend/brokers/`, to avoid touching its already-covered tests for
+  a pure rename. It is reachable only from `backend/brokers/kite.py` now — nothing else in
+  the app touches a broker SDK.
+- Streaming ticks: only Kite's `ticker_feed()` returns a real feed in this pass;
+  Upstox/Angel One return `None` and callers fall back to polling, the same path used when
+  no broker is connected at all. Both do have documented WebSocket APIs — wiring them is
+  future work, not blocked on anything.
 
 ---
 
