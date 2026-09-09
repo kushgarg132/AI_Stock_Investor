@@ -167,6 +167,38 @@ def test_broker_credentials_reject_a_blank_secret(client):
     assert resp.status_code == 400
 
 
+def test_upstox_credentials_carry_a_redirect_uri(client):
+    resp = client.post(
+        "/api/v1/settings/broker-credentials",
+        json={
+            "broker": "upstox", "api_key": "ak", "api_secret": "as",
+            "extra": "https://app.example.com/callback",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["configured"] is True
+
+
+def test_angel_one_credentials_do_not_require_a_secret(client):
+    """Angel One's app-level API key is the only long-lived credential; the
+    account password and TOTP are supplied fresh at connect time, never
+    stored (see backend/brokers/angel_one.py)."""
+    resp = client.post(
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "angel_one", "api_key": "pk-1"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["configured"] is True
+
+
+def test_kite_still_requires_both_key_and_secret(client):
+    resp = client.post(
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "kite", "api_key": "ak"},
+    )
+    assert resp.status_code == 400
+
+
 def test_deleting_broker_credentials_disconnects_only_the_caller(db):
     _client(db, user=_user("alice")).post(
         "/api/v1/settings/broker-credentials",

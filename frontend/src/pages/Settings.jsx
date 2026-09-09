@@ -47,37 +47,71 @@ const BROKER_TONE = {
   UNCONFIGURED: 'secondary',
 };
 
+const BROKER_LABEL = { kite: 'Zerodha Kite', upstox: 'Upstox', angel_one: 'Angel One' };
+
+const TextField = ({ id, label, ...props }) => (
+  <div>
+    <label htmlFor={id} className="field-label block mb-1">
+      {label}
+    </label>
+    <input
+      id={id}
+      autoComplete="off"
+      className="w-full bg-transparent border-b border-[var(--rule-strong)] py-1.5 text-sm focus:outline-none focus:border-[var(--stamp)]"
+      {...props}
+    />
+  </div>
+);
+
 const BrokerSheet = () => {
+  const [broker, setBroker] = useState('kite');
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [requestToken, setRequestToken] = useState('');
   const [note, setNote] = useState(null);
+
+  // Credential-save form (shown when UNCONFIGURED).
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
+  const [redirectUri, setRedirectUri] = useState('');
 
-  const refresh = () =>
+  // Redirect-flow connect (Kite / Upstox): paste the code/request_token.
+  const [requestToken, setRequestToken] = useState('');
+
+  // Credential-flow connect (Angel One): submitted fresh every time.
+  const [clientCode, setClientCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [totp, setTotp] = useState('');
+
+  const refresh = (forBroker) =>
     api
-      .get(endpoints.broker.status)
+      .get(endpoints.broker.status(forBroker))
       .then((res) => setState(res.data))
       .catch(() => setState({ state: 'UNCONFIGURED', connected: false, action: null }));
 
   useEffect(() => {
-    refresh();
-  }, []);
+    setState(null);
+    setNote(null);
+    refresh(broker);
+  }, [broker]);
+
+  const needsSecret = broker !== 'angel_one';
+  const needsRedirectUri = broker === 'upstox';
 
   const saveCredentials = async () => {
-    if (!apiKey.trim() || !apiSecret.trim()) return;
+    if (!apiKey.trim() || (needsSecret && !apiSecret.trim())) return;
     setBusy(true);
     setNote(null);
     try {
       await api.post(endpoints.settings.brokerCredentials, {
-        broker: 'kite',
+        broker,
         api_key: apiKey.trim(),
-        api_secret: apiSecret.trim(),
+        api_secret: apiSecret.trim() || undefined,
+        extra: needsRedirectUri ? redirectUri.trim() || undefined : undefined,
       });
       setApiKey('');
       setApiSecret('');
-      await refresh();
+      setRedirectUri('');
+      await refresh(broker);
     } catch (err) {
       setNote(err?.response?.data?.detail || 'Could not save the credentials');
     } finally {
@@ -89,9 +123,9 @@ const BrokerSheet = () => {
     setBusy(true);
     setNote(null);
     try {
-      const res = await api.get(endpoints.broker.loginUrl);
+      const res = await api.get(endpoints.broker.loginUrl(broker));
       window.open(res.data.url, '_blank', 'noopener');
-      setNote('Complete the Zerodha login, then paste the request_token from the redirect URL.');
+      setNote(`Complete the ${BROKER_LABEL[broker]} login, then paste the code from the redirect URL.`);
     } catch (err) {
       setNote(err?.response?.data?.detail || 'Could not build the login URL');
     } finally {
@@ -99,17 +133,35 @@ const BrokerSheet = () => {
     }
   };
 
-  const exchange = async () => {
+  const connectWithRequestToken = async () => {
     if (!requestToken.trim()) return;
     setBusy(true);
     setNote(null);
     try {
-      await api.post(endpoints.broker.callback, { request_token: requestToken.trim() });
+      await api.post(endpoints.broker.connect(broker), { request_token: requestToken.trim() });
       setRequestToken('');
-      setNote(null);
-      await refresh();
+      await refresh(broker);
     } catch (err) {
-      setNote(err?.response?.data?.detail || 'Kite rejected that request token');
+      setNote(err?.response?.data?.detail || `${BROKER_LABEL[broker]} rejected that code`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const connectWithCredentials = async () => {
+    if (!clientCode.trim() || !password.trim() || !totp.trim()) return;
+    setBusy(true);
+    setNote(null);
+    try {
+      await api.post(endpoints.broker.connect(broker), {
+        client_code: clientCode.trim(), password, totp: totp.trim(),
+      });
+      setClientCode('');
+      setPassword('');
+      setTotp('');
+      await refresh(broker);
+    } catch (err) {
+      setNote(err?.response?.data?.detail || `${BROKER_LABEL[broker]} rejected that login`);
     } finally {
       setBusy(false);
     }
@@ -118,16 +170,36 @@ const BrokerSheet = () => {
   const disconnect = async () => {
     setBusy(true);
     try {
-      await api.post(endpoints.broker.disconnect);
-      await refresh();
+      await api.post(endpoints.broker.disconnect(broker));
+      await refresh(broker);
     } finally {
       setBusy(false);
     }
   };
 
+  const brokerPicker = (
+    <div className="flex gap-1">
+      {Object.keys(BROKER_LABEL).map((key) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => setBroker(key)}
+          className={cn(
+            'field-label px-2 py-1 border',
+            key === broker
+              ? 'border-[var(--stamp)] text-[var(--stamp)]'
+              : 'border-transparent text-[var(--ink-faint)] hover:text-[var(--ink-soft)]',
+          )}
+        >
+          {BROKER_LABEL[key]}
+        </button>
+      ))}
+    </div>
+  );
+
   if (!state) {
     return (
-      <Sheet title="Broker">
+      <Sheet title="Broker" actions={brokerPicker}>
         <Ruling rows={2} />
       </Sheet>
     );
@@ -136,48 +208,42 @@ const BrokerSheet = () => {
   return (
     <Sheet
       title="Broker"
-      actions={<Badge variant={BROKER_TONE[state.state]}>{state.state.replace('_', ' ')}</Badge>}
+      actions={
+        <div className="flex items-center gap-3">
+          {brokerPicker}
+          <Badge variant={BROKER_TONE[state.state]}>{state.state.replace('_', ' ')}</Badge>
+        </div>
+      }
     >
       <p className="text-sm text-[var(--ink-soft)]">
-        A connected Zerodha session supplies live tick data for intraday runs. Orders stay
-        simulated — no real money moves, in either direction.
+        A connected {BROKER_LABEL[broker]} session supplies live tick data for intraday runs.
+        Orders stay simulated — no real money moves, in either direction.
       </p>
 
       {state.state === 'UNCONFIGURED' ? (
         <div className="mt-4 space-y-3">
           <p className="doc-meta normal-case">
-            Paste the API key and secret from your Kite Connect app to configure this server.
+            {needsSecret
+              ? `Paste the API key and secret from your ${BROKER_LABEL[broker]} app to configure this server.`
+              : `Paste the API key from your ${BROKER_LABEL[broker]} app. Your account password and TOTP are entered fresh each time you connect — never stored.`}
           </p>
-          <div>
-            <label htmlFor="kite-api-key" className="field-label block mb-1">
-              API key
-            </label>
-            <input
-              id="kite-api-key"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
-              autoComplete="off"
-              className="w-full bg-transparent border-b border-[var(--rule-strong)] py-1.5 text-sm focus:outline-none focus:border-[var(--stamp)]"
+          <TextField id="broker-api-key" label="API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+          {needsSecret && (
+            <TextField
+              id="broker-api-secret" label="API secret" type="password"
+              value={apiSecret} onChange={(e) => setApiSecret(e.target.value)}
             />
-          </div>
-          <div>
-            <label htmlFor="kite-api-secret" className="field-label block mb-1">
-              API secret
-            </label>
-            <input
-              id="kite-api-secret"
-              type="password"
-              value={apiSecret}
-              onChange={(event) => setApiSecret(event.target.value)}
-              autoComplete="off"
-              className="w-full bg-transparent border-b border-[var(--rule-strong)] py-1.5 text-sm focus:outline-none focus:border-[var(--stamp)]"
+          )}
+          {needsRedirectUri && (
+            <TextField
+              id="broker-redirect-uri" label="Redirect URI (registered with Upstox)"
+              value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)}
+              placeholder="https://your-app.example.com/callback"
             />
-          </div>
+          )}
           <Button
-            variant="primary"
-            size="sm"
-            onClick={saveCredentials}
-            disabled={busy || !apiKey.trim() || !apiSecret.trim()}
+            variant="primary" size="sm" onClick={saveCredentials}
+            disabled={busy || !apiKey.trim() || (needsSecret && !apiSecret.trim())}
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
             Save
@@ -191,17 +257,34 @@ const BrokerSheet = () => {
             Disconnect
           </Button>
         </div>
+      ) : broker === 'angel_one' ? (
+        <div className="mt-4 space-y-3">
+          <TextField id="angel-client-code" label="Client code" value={clientCode} onChange={(e) => setClientCode(e.target.value)} />
+          <TextField id="angel-password" label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          <TextField
+            id="angel-totp" label="TOTP (from your authenticator app)" inputMode="numeric"
+            value={totp} onChange={(e) => setTotp(e.target.value)}
+          />
+          <Button
+            variant="primary" size="sm" onClick={connectWithCredentials}
+            disabled={busy || !clientCode.trim() || !password.trim() || !totp.trim()}
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            Connect
+          </Button>
+          <p className="doc-meta normal-case">Sessions end at midnight IST.</p>
+        </div>
       ) : (
         <div className="mt-4 space-y-3">
           <Button variant="primary" size="sm" onClick={openLogin} disabled={busy}>
             <ExternalLink className="w-3.5 h-3.5" />
-            Connect Zerodha
+            Connect {BROKER_LABEL[broker]}
           </Button>
 
           <div className="flex items-end gap-2">
             <div className="flex-1">
               <label htmlFor="request-token" className="field-label block mb-1">
-                Request token
+                {broker === 'upstox' ? 'Code' : 'Request token'}
               </label>
               <input
                 id="request-token"
@@ -214,7 +297,7 @@ const BrokerSheet = () => {
             <Button
               variant="secondary"
               size="sm"
-              onClick={exchange}
+              onClick={connectWithRequestToken}
               disabled={busy || !requestToken.trim()}
             >
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -223,7 +306,9 @@ const BrokerSheet = () => {
           </div>
 
           <p className="doc-meta normal-case">
-            The token is single-use and expires in minutes. Sessions end daily at 06:00 IST.
+            {broker === 'kite'
+              ? 'The token is single-use and expires in minutes. Sessions end daily at 06:00 IST.'
+              : 'The code is single-use and expires in minutes. Sessions end daily at 03:30 IST.'}
           </p>
         </div>
       )}

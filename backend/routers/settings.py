@@ -110,10 +110,17 @@ async def set_omniroute_model(
     return {"message": "Model updated successfully"}
 
 
+# Angel One's REST flow needs no long-lived secret: the account password and
+# TOTP are supplied fresh at connect time (backend/brokers/angel_one.py),
+# never stored. Every other broker needs a real secret.
+_NO_SECRET_REQUIRED = {"angel_one"}
+
+
 class BrokerCredentialsUpdate(BaseModel):
     broker: str = "kite"
     api_key: str
-    api_secret: str
+    api_secret: Optional[str] = None
+    extra: Optional[str] = None  # e.g. Upstox's registered redirect_uri
 
 
 @router.get("/settings/broker-credentials")
@@ -134,12 +141,20 @@ async def set_broker_credentials(
     store: BrokerCredentialStore = Depends(get_credential_store),
 ):
     api_key = update.api_key.strip()
-    api_secret = update.api_secret.strip()
-    if not api_key or not api_secret:
-        raise HTTPException(status_code=400, detail="Both API key and secret are required")
+    api_secret = (update.api_secret or "").strip()
+    secret_required = update.broker not in _NO_SECRET_REQUIRED
+
+    if not api_key or (secret_required and not api_secret):
+        raise HTTPException(
+            status_code=400,
+            detail="API key is required" if not secret_required else "Both API key and secret are required",
+        )
 
     try:
-        await store.save(user.id, update.broker, api_key=api_key, api_secret=api_secret)
+        await store.save(
+            user.id, update.broker, api_key=api_key,
+            api_secret=api_secret or "unused", extra=update.extra,
+        )
     except CredentialEncryptionUnavailable:
         logger.error("Refused to store broker credentials: CREDENTIAL_ENCRYPTION_KEY unset")
         raise HTTPException(

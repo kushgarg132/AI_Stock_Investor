@@ -149,10 +149,11 @@ export const endpoints = {
     pnl: '/analytics/pnl',
   },
   broker: {
-    status: '/broker/kite/status',
-    loginUrl: '/broker/kite/login-url',
-    callback: '/broker/kite/callback',
-    disconnect: '/broker/kite/disconnect',
+    list: '/broker/list',
+    status: (broker) => `/broker/${broker}/status`,
+    loginUrl: (broker) => `/broker/${broker}/login-url`,
+    connect: (broker) => `/broker/${broker}/connect`,
+    disconnect: (broker) => `/broker/${broker}/disconnect`,
   },
   settings: {
     omnirouteModels: '/settings/omniroute-models',
