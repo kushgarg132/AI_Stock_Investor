@@ -1,8 +1,11 @@
-"""refresh_from_kite_if_connected / refresh_from_free_public_sources: the
+"""refresh_instruments_from_kite / refresh_from_free_public_sources: the
 bundled seed file (~130 large-caps) is a floor, not the real universe --
 these are what actually expand the instrument master, and neither must ever
 raise regardless of why it can't (no session, expired session, database
-down, NSE/BSE unreachable)."""
+down, NSE/BSE unreachable).
+
+The Kite refresh takes the connecting user's session explicitly: credentials
+are per-user, so there is no deployment-wide session it could build itself."""
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -24,12 +27,11 @@ def _fake_master(meta_doc=None):
     return master, meta
 
 
-async def test_no_op_when_kite_session_is_not_active(monkeypatch):
+async def test_no_op_when_kite_session_is_not_active():
     fake_session = MagicMock()
     fake_session.state = AsyncMock(return_value=KiteSessionState.NEEDS_LOGIN)
-    monkeypatch.setattr("backend.auth.kite_session.KiteSessionManager", lambda *a, **kw: fake_session)
 
-    result = await loader.refresh_from_kite_if_connected()
+    result = await loader.refresh_instruments_from_kite(fake_session, "api-key")
 
     assert result == 0
 
@@ -40,7 +42,6 @@ async def test_refreshes_both_nse_and_bse_when_active(monkeypatch):
     fake_session = MagicMock()
     fake_session.state = AsyncMock(return_value=KiteSessionState.ACTIVE)
     fake_session.get_access_token = AsyncMock(return_value="tok")
-    monkeypatch.setattr("backend.auth.kite_session.KiteSessionManager", lambda *a, **kw: fake_session)
 
     captured = {}
 
@@ -51,19 +52,17 @@ async def test_refreshes_both_nse_and_bse_when_active(monkeypatch):
     monkeypatch.setattr("backend.instruments.kite_source.KiteInstrumentSource", _FakeSource)
     monkeypatch.setattr(loader, "refresh_instruments", AsyncMock(return_value=1847))
 
-    result = await loader.refresh_from_kite_if_connected()
+    result = await loader.refresh_instruments_from_kite(fake_session, "api-key")
 
     assert result == 1847
     assert captured["exchanges"] == ("NSE", "BSE")
 
 
-async def test_never_raises_and_returns_zero_on_any_failure(monkeypatch):
-    def _boom(*a, **kw):
-        raise RuntimeError("redis is down")
+async def test_never_raises_and_returns_zero_on_any_failure():
+    fake_session = MagicMock()
+    fake_session.state = AsyncMock(side_effect=RuntimeError("redis is down"))
 
-    monkeypatch.setattr("backend.auth.kite_session.KiteSessionManager", _boom)
-
-    result = await loader.refresh_from_kite_if_connected()
+    result = await loader.refresh_instruments_from_kite(fake_session, "api-key")
 
     assert result == 0
 

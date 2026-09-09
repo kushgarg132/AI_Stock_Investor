@@ -70,7 +70,8 @@ const BrokerSheet = () => {
     setBusy(true);
     setNote(null);
     try {
-      await api.post(endpoints.settings.kiteCredentials, {
+      await api.post(endpoints.settings.brokerCredentials, {
+        broker: 'kite',
         api_key: apiKey.trim(),
         api_secret: apiSecret.trim(),
       });
@@ -376,8 +377,12 @@ const ModelSheet = () => {
       await api.post(endpoints.settings.omnirouteModel, { model: selected });
       setCurrent(selected);
       setNote('Saved.');
-    } catch {
-      setNote('Could not save the model.');
+    } catch (err) {
+      setNote(
+        err?.response?.status === 403
+          ? 'The model applies to every account, so only an administrator can change it.'
+          : 'Could not save the model.',
+      );
     } finally {
       setSaving(false);
     }

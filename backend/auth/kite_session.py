@@ -39,8 +39,14 @@ from zoneinfo import ZoneInfo
 from kiteconnect import KiteConnect
 from kiteconnect.exceptions import TokenException
 
-_REDIS_KEY = "kite:access_token"
 _IST = ZoneInfo("Asia/Kolkata")
+
+
+def _redis_key(user_id: str) -> str:
+    """One cached token per user per broker. This was a single fixed key
+    until 2026-09-09, which meant whoever connected last was trading for
+    everyone signed in."""
+    return f"broker:{user_id}:kite:access_token"
 
 
 class KiteSessionState(str, Enum):
@@ -62,10 +68,13 @@ def next_6am_ist(now_utc: datetime) -> datetime:
 
 
 class KiteSessionManager:
-    def __init__(self, api_key: Optional[str], api_secret: Optional[str], redis) -> None:
+    def __init__(
+        self, api_key: Optional[str], api_secret: Optional[str], redis, user_id: str
+    ) -> None:
         self._api_key = api_key
         self._api_secret = api_secret
         self._redis = redis
+        self._key = _redis_key(user_id)
 
     def _client(self, access_token: Optional[str] = None) -> KiteConnect:
         return KiteConnect(api_key=self._api_key, access_token=access_token)
@@ -104,14 +113,14 @@ class KiteSessionManager:
 
         now = datetime.now(timezone.utc)
         ttl_seconds = max(1, int((next_6am_ist(now) - now).total_seconds()))
-        await self._redis.set(_REDIS_KEY, access_token, ex=ttl_seconds)
+        await self._redis.set(self._key, access_token, ex=ttl_seconds)
         return access_token
 
     async def get_access_token(self) -> Optional[str]:
-        return await self._redis.get(_REDIS_KEY)
+        return await self._redis.get(self._key)
 
     async def clear(self) -> None:
         """Forgets the cached access token. Kite has no logout endpoint, so
         disconnecting means dropping our copy; the token stays valid on
         Kite's side until it expires at 06:00 IST."""
-        await self._redis.delete(_REDIS_KEY)
+        await self._redis.delete(self._key)

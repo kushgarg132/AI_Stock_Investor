@@ -158,7 +158,7 @@ export const endpoints = {
     omnirouteModels: '/settings/omniroute-models',
     omnirouteModel: '/settings/omniroute-model',
     preferences: '/settings/preferences',
-    kiteCredentials: '/settings/kite-credentials',
+    brokerCredentials: '/settings/broker-credentials',
   },
   auth: {
     google: '/auth/google',

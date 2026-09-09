@@ -87,31 +87,30 @@ async def refresh_from_free_public_sources(master: InstrumentMaster) -> int:
     return total
 
 
-async def refresh_from_kite_if_connected() -> int:
-    """Best-effort: when a live Kite session is connected, pulls Kite's real
-    NSE+BSE instrument dump (thousands of symbols, e.g. small/mid-caps like
-    Mishtann Foods that the bundled seed file never had) into the instrument
-    master. A no-op (returns 0) when Kite isn't configured, the daily session
-    has expired, or the database isn't reachable -- the seed file stays as
-    the floor either way, this only adds. Builds its own dependencies (rather
-    than taking a `master`/session) so every failure mode is caught here,
-    since both of this function's callers (startup, and the Kite connect
-    callback) must never fail because of it."""
+async def refresh_instruments_from_kite(session, api_key: str) -> int:
+    """Best-effort: pulls Kite's real NSE+BSE instrument dump (thousands of
+    symbols, e.g. small/mid-caps like Mishtann Foods that the bundled seed
+    file never had) into the instrument master, using the session of whichever
+    user just connected. The instrument master is shared reference data, not
+    per-user, so any connected session may refresh it.
+
+    A no-op (returns 0) when that session isn't ACTIVE or the database isn't
+    reachable -- the seed file stays as the floor either way, this only adds.
+    Swallows every failure because its caller (the Kite connect callback) must
+    not fail because of it."""
     from kiteconnect import KiteConnect
 
-    from backend.auth.kite_session import KiteSessionManager, KiteSessionState
-    from backend.configs.settings import settings
+    from backend.auth.kite_session import KiteSessionState
     from backend.database import db
     from backend.instruments.kite_source import KiteInstrumentSource
 
     try:
-        session = KiteSessionManager(settings.KITE_API_KEY, settings.KITE_API_SECRET, db.redis)
         if await session.state() != KiteSessionState.ACTIVE:
             return 0
 
         access_token = await session.get_access_token()
         source = KiteInstrumentSource(
-            lambda: KiteConnect(api_key=settings.KITE_API_KEY, access_token=access_token),
+            lambda: KiteConnect(api_key=api_key, access_token=access_token),
             exchanges=("NSE", "BSE"),
         )
         return await refresh_instruments(source, InstrumentMaster(db.db))

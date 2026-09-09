@@ -11,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.auth.broker_credentials import BrokerCredentials, get_credential_store
 from backend.auth.dependency import get_current_user
 from backend.auth.kite_session import KiteSessionState
 from backend.auth.models import User
@@ -49,11 +50,20 @@ class _FakeSession:
         self._state = KiteSessionState.NEEDS_LOGIN
 
 
+class _FakeCredentials:
+    """Stands in for BrokerCredentialStore: the routes only need the caller's
+    own key to hand to the instrument refresh."""
+
+    async def get(self, user_id, broker_name):
+        return BrokerCredentials(api_key="ak", api_secret="as")
+
+
 def _client(session):
     app = FastAPI()
     app.include_router(broker.router, prefix="/api/v1")
     app.dependency_overrides[get_current_user] = lambda: _USER
     app.dependency_overrides[broker.get_kite_session] = lambda: session
+    app.dependency_overrides[get_credential_store] = lambda: _FakeCredentials()
     return TestClient(app)
 
 
