@@ -131,6 +131,7 @@ export const endpoints = {
     positions: '/trading/positions',
     fills: '/trading/fills',
     equity: '/trading/equity',
+    killSwitch: '/trading/kill-switch',
     trades: (status) => (status ? `/trading/trades?status=${status}` : '/trading/trades'),
     instruments: (q) => `/trading/instruments?q=${encodeURIComponent(q)}`,
   },

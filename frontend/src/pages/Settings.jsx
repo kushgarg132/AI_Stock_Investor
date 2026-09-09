@@ -324,7 +324,12 @@ const BrokerSheet = () => {
 
 const MandateSheet = () => {
   const [prefs, setPrefs] = useState(null);
-  const [draft, setDraft] = useState({ account_size: '', max_exposure: '' });
+  const [draft, setDraft] = useState({
+    account_size: '',
+    max_exposure: '',
+    per_trade_cap: '',
+    daily_loss_limit: '',
+  });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -335,6 +340,8 @@ const MandateSheet = () => {
         setDraft({
           account_size: res.data.account_size,
           max_exposure: res.data.max_exposure,
+          per_trade_cap: res.data.per_trade_cap,
+          daily_loss_limit: res.data.daily_loss_limit,
         });
       })
       .catch(() => setPrefs(null));
@@ -379,6 +386,25 @@ const MandateSheet = () => {
           value={draft.max_exposure}
           onChange={(value) => setDraft((d) => ({ ...d, max_exposure: value }))}
           onCommit={() => save({ max_exposure: Number(draft.max_exposure) })}
+        />
+      </Row>
+
+      <Row label="Per-trade cap" hint="Hard notional ceiling for any single trade.">
+        <NumberField
+          value={draft.per_trade_cap}
+          onChange={(value) => setDraft((d) => ({ ...d, per_trade_cap: value }))}
+          onCommit={() => save({ per_trade_cap: Number(draft.per_trade_cap) })}
+        />
+      </Row>
+
+      <Row
+        label="Daily loss limit"
+        hint="Kill-switch trigger. Tripping halts new intraday orders for the rest of the day."
+      >
+        <NumberField
+          value={draft.daily_loss_limit}
+          onChange={(value) => setDraft((d) => ({ ...d, daily_loss_limit: value }))}
+          onCommit={() => save({ daily_loss_limit: Number(draft.daily_loss_limit) })}
         />
       </Row>
 

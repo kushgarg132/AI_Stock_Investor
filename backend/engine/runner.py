@@ -16,7 +16,8 @@ from backend.engine.context import SimpleStrategyContext
 from backend.engine.persistence import LedgerStore
 from backend.engine.portfolio import Portfolio
 from backend.engine.protocols import DataFeed, ExecutionClient, Strategy, StrategyContext
-from backend.engine.session import is_past_square_off_time
+from backend.engine.session import IST, is_past_square_off_time
+from backend.risk.kill_switch import should_trip
 from backend.scoring.composite import CompositeScore, score_intent
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,8 @@ async def size_intents(
     account_size: float,
     max_exposure: float,
     order_sink: Optional[OrderSink] = None,
+    per_trade_cap: Optional[float] = None,
+    kill_switch_tripped: bool = False,
 ) -> list[Order]:
     """Scores each Intent (backend.scoring.composite.score_intent, which
     caps AI's influence at AI_CAP regardless of what's passed here), then
@@ -96,6 +99,17 @@ async def size_intents(
         if scored is None:
             continue  # rule floor not met -- no trade, regardless of AI
 
+        owning_strategy = owner_by_symbol.get(intent.symbol)
+        mode = owning_strategy.spec.mode if owning_strategy is not None else "LONGTERM"
+
+        # The kill-switch is about auto-executed risk. A tripped switch
+        # blocks new INTRADAY orders (the ones that go straight to
+        # execution) but not LONGTERM ones -- those stop at a
+        # human-approved suggestion regardless, so blocking them too would
+        # only hide information from the person reviewing the inbox.
+        if kill_switch_tripped and mode == "INTRADAY":
+            continue
+
         if intent.stop_hint is None:
             logger.info("skipping intent for %s: strategy supplied no stop_hint", intent.symbol)
             continue
@@ -115,12 +129,16 @@ async def size_intents(
             continue
 
         notional = size * entry
+        if per_trade_cap is not None and notional > per_trade_cap:
+            logger.info(
+                "skipping intent for %s: notional %.2f exceeds per-trade cap %.2f",
+                intent.symbol, notional, per_trade_cap,
+            )
+            continue
         if not RiskRules.check_exposure_limit(current_exposure, max_exposure, notional):
             continue
         current_exposure += notional
 
-        owning_strategy = owner_by_symbol.get(intent.symbol)
-        mode = owning_strategy.spec.mode if owning_strategy is not None else "LONGTERM"
         product = "MIS" if mode == "INTRADAY" else "CNC"
 
         order = Order(
@@ -192,6 +210,9 @@ async def run(
     max_exposure: float = 1_000_000.0,
     ledger: Optional[LedgerStore] = None,
     order_sink: Optional[OrderSink] = None,
+    per_trade_cap: Optional[float] = None,
+    daily_loss_limit: Optional[float] = None,
+    kill_switch_store=None,
 ) -> None:
     """`symbol_for_token` is not in the plan's pseudocode signature; it's
     needed because `Bar` identifies instruments by `instrument_token` while
@@ -207,6 +228,18 @@ async def run(
     without a Redis dependency. `ledger`, if given, mirrors every
     order/fill/position snapshot into Mongo (backend/engine/persistence.py)
     alongside the in-memory `portfolio`, which remains the book of record.
+
+    `daily_loss_limit`/`kill_switch_store` (Phase 3): when both are given,
+    each bar's cumulative realized+unrealized P&L (`portfolio.equity`) is
+    checked against the limit; a breach persists a trip
+    (`backend.risk.kill_switch.KillSwitchStore`, keyed by `ledger.user_id`
+    and the bar's IST calendar date -- so `ledger` must also be given for
+    this to do anything) and blocks further INTRADAY orders for the rest of
+    this run. `kill_switch_store` is checked once at the start too, so a
+    run restarted after an earlier trip today starts blocked rather than
+    getting a fresh chance to lose more before re-detecting the breach.
+    Omit either argument and the kill-switch simply never engages, exactly
+    as before this parameter existed.
     """
     symbol_for_token = symbol_for_token or {}
     ctx = SimpleStrategyContext(clock, portfolio, symbol_for_token)
@@ -217,12 +250,34 @@ async def run(
     for strategy in strategies:
         strategy.on_start(ctx)
 
+    kill_switch_tripped = False
+
     async for bar in feed:
         if isinstance(clock, SimClock):
             clock.advance(bar.timestamp)
         ctx.update(bar)
 
         symbol = symbol_for_token.get(bar.instrument_token)
+
+        if daily_loss_limit is not None and kill_switch_store is not None and ledger is not None:
+            trading_day = bar.timestamp.astimezone(IST).date()
+            if not kill_switch_tripped:
+                if await kill_switch_store.is_tripped(ledger.user_id, trading_day):
+                    kill_switch_tripped = True
+                else:
+                    mark_prices = {
+                        pos_symbol: history[-1].close
+                        for pos_symbol in portfolio.positions
+                        if (history := ctx.history(pos_symbol, 1))
+                    }
+                    equity = portfolio.equity(mark_prices)
+                    if should_trip(equity, daily_loss_limit):
+                        kill_switch_tripped = True
+                        await kill_switch_store.trip(
+                            ledger.user_id, trading_day,
+                            reason=f"daily loss limit ₹{daily_loss_limit:,.0f} breached",
+                            equity=equity,
+                        )
 
         # SimulatedExecutionClient (and any future ExecutionClient that
         # fills against the current bar rather than a live broker feed)
@@ -239,7 +294,7 @@ async def run(
 
         orders = await size_intents(
             ctx.drain_intents(), portfolio, ctx, owner_by_symbol, redis, account_size, max_exposure,
-            order_sink=order_sink,
+            order_sink=order_sink, per_trade_cap=per_trade_cap, kill_switch_tripped=kill_switch_tripped,
         )
         orders.extend(_square_off_orders(symbol, bar.timestamp, portfolio, owner_by_symbol))
 

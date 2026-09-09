@@ -32,8 +32,9 @@ code disagree, the code is right — fix the document in the same commit.
 - **Every per-account record carries `user_id`.** This app is multi-user; nothing may be
   keyed on "the operator".
 - **Position sizing lives in `size_intents` + `RiskRules`, never inside a strategy.**
-- Once Phase 3 lands: the daily loss kill-switch and the backtest gate are enforced in code,
-  not by discipline. Do not add a code path that routes around either.
+- The daily loss kill-switch (`backend/risk/kill_switch.py`) and the backtest gate
+  (`backend/risk/backtest_gate.py`) are enforced in code, not by discipline. Do not add a
+  code path that routes around either.
 
 ## Deployment
 

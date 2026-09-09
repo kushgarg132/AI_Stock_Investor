@@ -10,6 +10,7 @@ from backend.core.clock import SimClock
 from backend.data.feeds.historical import HistoricalFeed
 from backend.data.protocols import MarketDataProvider
 from backend.engine.execution.simulated import SimulatedExecutionClient
+from backend.engine.metrics import compute_max_drawdown, compute_sharpe_ratio
 from backend.engine.portfolio import Portfolio
 from backend.engine.protocols import Strategy
 from backend.engine.runner import run
@@ -89,9 +90,7 @@ async def run_backtest(
         win_rate=win_rate,
         profit_factor=profit_factor,
         total_pnl=total_pnl,
-        # Both need a per-bar equity curve the runner doesn't expose yet;
-        # follow-up, not computed here (see task-2-report.md).
-        max_drawdown=0.0,
-        sharpe_ratio=0.0,
+        max_drawdown=compute_max_drawdown(trades, account_size),
+        sharpe_ratio=compute_sharpe_ratio(trades, account_size),
         trades=trades,
     )

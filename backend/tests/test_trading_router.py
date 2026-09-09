@@ -213,10 +213,24 @@ def test_search_instruments_no_matches_returns_empty_list(instruments_client):
     assert resp.json() == []
 
 
+async def _seed_passing_backtest(strategy_name: str) -> None:
+    from backend.components.shared.models import BacktestResult
+    from backend.risk.backtest_gate import BacktestGateStore
+
+    await BacktestGateStore(_FakeDb.db).record(strategy_name, BacktestResult(
+        symbol="RELIANCE", start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        end_date=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        total_trades=40, win_rate=0.55, profit_factor=1.5, total_pnl=50_000.0,
+        max_drawdown=0.10, sharpe_ratio=1.2, trades=[],
+    ))
+
+
 def test_start_then_stop_round_trip(monkeypatch):
     monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
     monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
     monkeypatch.setattr(trading, "db", _FakeDb)
+    for name in ("technical_breakout", "mean_reversion", "macd_crossover"):
+        asyncio.run(_seed_passing_backtest(name))
 
     app = FastAPI()
     app.include_router(trading.router, prefix="/api/v1")
@@ -353,6 +367,53 @@ async def test_longterm_never_uses_the_tick_feed(monkeypatch):
     )
 
     assert isinstance(feed, PollingLiveFeed)
+
+
+def test_start_excludes_strategies_that_have_not_cleared_the_backtest_gate(monkeypatch):
+    """No strategy has a stored backtest result in this test's fresh db --
+    the gate must exclude all of them rather than let an unproven strategy
+    trade, so the request comes back as "nothing to run", not a silent
+    partial start."""
+    monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
+    monkeypatch.setattr(trading, "db", type("_Db", (), {"db": AsyncMongoMockClient()["test_db"], "redis": None})())
+
+    app = FastAPI()
+    app.include_router(trading.router, prefix="/api/v1")
+    app.dependency_overrides[get_current_user] = lambda: _USER
+    app.dependency_overrides[trading.get_run_store] = lambda: RunStore(trading.db.db)
+
+    with TestClient(app) as test_client:
+        resp = test_client.post("/api/v1/trading/start", json={
+            "mode": "LONGTERM", "universe": ["RELIANCE"], "poll_interval_seconds": 0.01,
+        })
+
+    assert resp.status_code == 400
+    assert "backtest" in resp.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_live_eligible_strategies_keeps_only_the_ones_that_passed():
+    from backend.components.shared.models import BacktestResult
+    from backend.risk.backtest_gate import BacktestGateStore
+
+    class _Strategy:
+        def __init__(self, name):
+            self.spec = type("_Spec", (), {"name": name})()
+
+    gate = BacktestGateStore(AsyncMongoMockClient()["test_db"])
+    await gate.record("technical_breakout", BacktestResult(
+        symbol="RELIANCE", start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        end_date=datetime(2026, 1, 2, tzinfo=timezone.utc),
+        total_trades=40, win_rate=0.55, profit_factor=1.5, total_pnl=50_000.0,
+        max_drawdown=0.10, sharpe_ratio=1.2, trades=[],
+    ))
+    # mean_reversion deliberately left unseeded -- must come back ineligible.
+
+    strategies = [_Strategy("technical_breakout"), _Strategy("mean_reversion")]
+    eligible = await trading.live_eligible_strategies(strategies, gate)
+
+    assert [s.spec.name for s in eligible] == ["technical_breakout"]
 
 
 def test_start_refuses_when_live_trading_is_switched_on(monkeypatch):

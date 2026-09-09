@@ -28,10 +28,13 @@ from backend.brokers.protocol import BrokerSessionState
 from backend.brokers.registry import BROKERS, get_broker_adapter
 from backend.configs.settings import settings
 from backend.prefs import PrefsStore
+from backend.risk.backtest_gate import BacktestGateStore
+from backend.risk.kill_switch import KillSwitchStore
 from backend.components.quant.indian_stocks import ALL_SCAN_STOCKS
 from backend.core.clock import SystemClock
 from backend.database import db
 from backend.data.providers.yfinance_provider import YFinanceProvider
+from backend.engine.session import IST
 from backend.data.feeds.polling_live import PollingLiveFeed
 from backend.engine.execution.simulated import SimulatedExecutionClient
 from backend.engine.persistence import LedgerStore
@@ -95,6 +98,18 @@ def start_background_run(coro, run_id: Optional[str] = None, runs: Optional[RunS
 
     task.add_done_callback(_cleanup)
     return run_id
+
+
+async def live_eligible_strategies(strategies, gate: BacktestGateStore):
+    """Keeps only strategies whose most recently stored backtest result
+    clears the gate (backend/risk/backtest_gate.py). A strategy with no
+    stored result, or a failing one, is excluded -- not an error, just not
+    live yet."""
+    eligible = []
+    for strategy in strategies:
+        if await gate.live_eligible(strategy.spec.name):
+            eligible.append(strategy)
+    return eligible
 
 
 async def build_feed(instruments, mode: str, poll_interval_seconds: float, user_id: str, credentials):
@@ -184,14 +199,19 @@ async def start_trading(
         raise HTTPException(status_code=400, detail="No resolvable instruments in universe")
 
     symbol_for_token = {i.instrument_token: i.tradingsymbol for i in instruments}
-    strategies = [
+    candidate_strategies = [
         s for s in build_default_strategies(
             universe=[i.tradingsymbol for i in instruments], symbol_for_token=symbol_for_token,
         )
         if s.spec.mode == req.mode
     ]
+    strategies = await live_eligible_strategies(candidate_strategies, BacktestGateStore(db.db))
     if not strategies:
-        raise HTTPException(status_code=400, detail=f"No strategies registered for mode {req.mode!r}")
+        reason = (
+            "have not cleared the backtest gate" if candidate_strategies
+            else f"registered for mode {req.mode!r}"
+        )
+        raise HTTPException(status_code=400, detail=f"No strategies {reason}")
 
     prefs = await PrefsStore(db.db).get(user.id)
     account_size = prefs["account_size"]
@@ -215,6 +235,8 @@ async def start_trading(
         clock=SystemClock(), symbol_for_token=symbol_for_token, redis=db.redis,
         account_size=account_size, max_exposure=max_exposure, ledger=ledger,
         order_sink=sink,
+        per_trade_cap=prefs["per_trade_cap"], daily_loss_limit=prefs["daily_loss_limit"],
+        kill_switch_store=KillSwitchStore(db.db),
     )
     await runs.create(
         run_id=run_id, user_id=user.id, mode=req.mode,
@@ -269,6 +291,23 @@ async def get_positions(ledger: LedgerStore = Depends(get_ledger_store)):
     portfolio.positions = positions
     portfolio.equity(quotes)
     return {symbol: position.model_dump() for symbol, position in positions.items()}
+
+
+@router.get("/kill-switch")
+async def get_kill_switch(user: User = Depends(get_current_user)):
+    """Today's (IST calendar date) daily-loss kill-switch state for this
+    user. Never re-arms itself -- a tripped switch stays tripped until
+    tomorrow's date rolls over."""
+    trading_day = datetime.now(IST).date()
+    trip = await KillSwitchStore(db.db).is_tripped(user.id, trading_day)
+    if trip is None:
+        return {"tripped": False}
+    return {
+        "tripped": True,
+        "reason": trip["reason"],
+        "equity": trip["equity"],
+        "tripped_at": trip["tripped_at"],
+    }
 
 
 @router.get("/fills")

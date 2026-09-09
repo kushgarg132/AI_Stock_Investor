@@ -14,7 +14,9 @@ from backend.components.quant.indian_stocks import ALL_SCAN_STOCKS
 DEFAULTS = {
     "universe": list(ALL_SCAN_STOCKS),
     "account_size": 1_000_000.0,
-    "max_exposure": 1_000_000.0,
+    "max_exposure": 1_000_000.0,  # per-day capital cap: total exposure allowed at once
+    "per_trade_cap": 100_000.0,  # hard notional ceiling for any single trade
+    "daily_loss_limit": 50_000.0,  # kill-switch trigger: cumulative loss for the day
     "scan_enabled": True,
     "omniroute_model": None,
 }

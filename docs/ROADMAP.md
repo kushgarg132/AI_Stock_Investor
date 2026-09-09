@@ -159,7 +159,7 @@ treatment Kite alone used to.
 
 ---
 
-## Phase 3 — Safety rails + backtest gate
+## Phase 3 — Safety rails + backtest gate — **done 2026-09-09**
 
 **Goal.** Make the two non-negotiable protections real before any real order can exist.
 
@@ -181,6 +181,34 @@ trades, profit factor ≥1.3, max drawdown ≤15%.
 **Done when:** a strategy without a passing stored backtest cannot be started in live mode,
 proven by a test; tripping the loss limit halts trading and the state is visible in the UI;
 drawdown and Sharpe are real numbers.
+
+### What landed
+
+- `backend/risk/backtest_gate.py` — `passes_gate` (pure) + `BacktestGateStore` (collection
+  `strategy_backtests`, one doc per run, `live_eligible` follows the latest only). Wired into
+  `/trading/start`: `live_eligible_strategies` filters the candidate list before a run
+  starts, so an unproven strategy 400s with a distinct message rather than silently running.
+- `backend/risk/kill_switch.py` — `should_trip` (pure: `equity <= -daily_loss_limit`) +
+  `KillSwitchStore` (collection `kill_switch_trips`, one doc per `(user_id, IST calendar
+  date)`, `$setOnInsert` so a restarted run re-detecting the same breach can't move when the
+  trip "started"). `run()` checks it once per bar; once tripped, `size_intents` drops new
+  INTRADAY orders for the rest of that run — LONGTERM ones are untouched since they only ever
+  reach a human-approved inbox. `GET /trading/kill-switch` surfaces today's state; the
+  Trading page shows a destructive banner with the reason when tripped.
+- `size_intents` gained `per_trade_cap` — a straight notional check ahead of the existing
+  exposure check, so a single trade can't consume the whole per-day cap alone.
+- `compute_max_drawdown`/`compute_sharpe_ratio` (`backend/engine/metrics.py`) replace the
+  hardcoded `0.0`s in `run_backtest`.
+- New per-user prefs `per_trade_cap` (₹100,000 default) and `daily_loss_limit` (₹50,000
+  default) in `backend/prefs.py`, editable from Settings → Mandate the same way
+  `account_size`/`max_exposure` already were.
+
+### Note for later
+
+`per_trade_cap`/`daily_loss_limit` are read once at `/trading/start` and baked into that
+run's `size_intents` calls — changing them in Settings takes effect on the *next* run, not
+a running one. Consistent with how `account_size`/`max_exposure` already worked; flagging it
+here since Phase 3 is what makes it a safety-relevant behavior rather than a cosmetic one.
 
 ---
 

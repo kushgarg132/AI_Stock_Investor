@@ -33,6 +33,13 @@ const Trading = () => {
   const [busy, setBusy] = useState(false);
   const [startError, setStartError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [killSwitch, setKillSwitch] = useState(null);
+
+  const loadKillSwitch = () =>
+    api
+      .get(endpoints.trading.killSwitch)
+      .then((res) => setKillSwitch(res.data))
+      .catch(() => setKillSwitch(null));
 
   const loadRuns = () =>
     api
@@ -49,12 +56,15 @@ const Trading = () => {
       .catch(() => {});
 
   useEffect(() => {
-    Promise.all([loadRuns(), loadLedger()]).finally(() => setLoading(false));
+    Promise.all([loadRuns(), loadLedger(), loadKillSwitch()]).finally(() => setLoading(false));
   }, []);
 
   useTopic('runs', loadRuns);
   useTopic('positions', (message) => setPositions(message.data));
-  useTopic('trades', loadLedger);
+  useTopic('trades', () => {
+    loadLedger();
+    loadKillSwitch();
+  });
 
   const active = runs.find((run) => run.status === 'RUNNING');
 
@@ -118,6 +128,14 @@ const Trading = () => {
             )
           }
         >
+          {killSwitch?.tripped && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge variant="destructive">Kill-switch tripped</Badge>
+              <span className="doc-meta normal-case">
+                {killSwitch.reason} · no new intraday orders for the rest of today.
+              </span>
+            </div>
+          )}
           {active ? (
             <div className="flex flex-wrap items-center gap-3">
               <Badge variant="success">Running</Badge>

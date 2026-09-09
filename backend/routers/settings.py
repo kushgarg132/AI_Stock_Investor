@@ -44,6 +44,8 @@ class PreferencesPatch(BaseModel):
     universe: Optional[list[str]] = None
     account_size: Optional[float] = None
     max_exposure: Optional[float] = None
+    per_trade_cap: Optional[float] = None
+    daily_loss_limit: Optional[float] = None
     scan_enabled: Optional[bool] = None
     omniroute_model: Optional[str] = None
 

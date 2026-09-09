@@ -125,3 +125,79 @@ async def test_product_is_mis_for_intraday_strategy_and_cnc_otherwise():
         account_size=1_000_000.0, max_exposure=1_000_000.0,
     )
     assert longterm_orders[0].product == "CNC"
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 safety rails: per-trade capital cap, kill-switch
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_per_trade_cap_rejects_a_trade_whose_notional_exceeds_it():
+    intent = Intent(
+        symbol="RELIANCE", side=Side.BUY, strength=1.0,
+        reason_codes=["signal"], stop_hint=90.0,
+    )
+    # Full-conviction sizing against a ₹1,000,000 account would normally
+    # produce a notional far above a ₹5,000 per-trade cap.
+    orders = await size_intents(
+        [intent], Portfolio(), _FakeCtx({"RELIANCE": 100.0}), {}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0, per_trade_cap=5_000.0,
+    )
+    assert orders == []
+
+
+@pytest.mark.asyncio
+async def test_per_trade_cap_allows_a_trade_within_it():
+    intent = Intent(
+        symbol="RELIANCE", side=Side.BUY, strength=1.0,
+        reason_codes=["signal"], stop_hint=99.0,  # tight stop -> small size
+    )
+    orders = await size_intents(
+        [intent], Portfolio(), _FakeCtx({"RELIANCE": 100.0}), {}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0, per_trade_cap=10_000_000.0,
+    )
+    assert len(orders) == 1
+
+
+@pytest.mark.asyncio
+async def test_no_per_trade_cap_means_no_extra_limit():
+    intent = Intent(
+        symbol="RELIANCE", side=Side.BUY, strength=1.0,
+        reason_codes=["signal"], stop_hint=90.0,
+    )
+    orders = await size_intents(
+        [intent], Portfolio(), _FakeCtx({"RELIANCE": 100.0}), {}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0,  # per_trade_cap omitted
+    )
+    assert len(orders) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_tripped_kill_switch_blocks_intraday_orders():
+    intent = Intent(
+        symbol="RELIANCE", side=Side.BUY, strength=0.9,
+        reason_codes=["signal"], stop_hint=90.0,
+    )
+    orders = await size_intents(
+        [intent], Portfolio(), _FakeCtx({"RELIANCE": 100.0}),
+        {"RELIANCE": _FakeStrategy("INTRADAY")}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0, kill_switch_tripped=True,
+    )
+    assert orders == []
+
+
+@pytest.mark.asyncio
+async def test_a_tripped_kill_switch_does_not_block_longterm_suggestions():
+    """The kill-switch is about auto-executed risk. Long-term proposals stop
+    at a human-approved suggestion regardless, so blocking them too would
+    only hide information from the person reviewing the inbox."""
+    intent = Intent(
+        symbol="RELIANCE", side=Side.BUY, strength=0.9,
+        reason_codes=["signal"], stop_hint=90.0,
+    )
+    orders = await size_intents(
+        [intent], Portfolio(), _FakeCtx({"RELIANCE": 100.0}),
+        {"RELIANCE": _FakeStrategy("LONGTERM")}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0, kill_switch_tripped=True,
+    )
+    assert len(orders) == 1
