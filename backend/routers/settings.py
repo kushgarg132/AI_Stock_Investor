@@ -1,12 +1,27 @@
+"""/settings/* -- per-user preferences and broker credentials, plus the
+deployment-wide LLM model an admin controls.
+
+This router used to rewrite .env on disk and mutate the in-process `settings`
+singleton from a plain signed-in request, which meant any user could overwrite
+the broker credentials and model choice for everyone. Both of those endpoints
+are gone: credentials are per-user and encrypted (backend/auth/broker_credentials.py),
+and the deployment model lives in Mongo behind an admin check.
+"""
+
 import logging
-from pathlib import Path
 from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.auth.dependency import get_current_user
+from backend.app_settings import AppSettingsStore
+from backend.auth.broker_credentials import (
+    BrokerCredentialStore,
+    CredentialEncryptionUnavailable,
+    get_credential_store,
+)
+from backend.auth.dependency import get_current_user, require_admin
 from backend.auth.models import User
 from backend.configs.settings import settings
 from backend.database import db
@@ -15,11 +30,13 @@ from backend.prefs import PrefsStore
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-ENV_PATH = Path(".env")
-
 
 def get_prefs_store() -> PrefsStore:
     return PrefsStore(db.db)
+
+
+def get_app_settings_store() -> AppSettingsStore:
+    return AppSettingsStore(db.db)
 
 
 class PreferencesPatch(BaseModel):
@@ -66,80 +83,78 @@ async def list_omniroute_models():
 
 
 @router.get("/settings/omniroute-model")
-async def get_omniroute_model():
-    return {"model": settings.OMNIROUTE_MODEL}
+async def get_omniroute_model(
+    app_settings: AppSettingsStore = Depends(get_app_settings_store),
+):
+    return {"model": await app_settings.get_llm_model() or settings.OMNIROUTE_MODEL}
 
 
 class ModelUpdate(BaseModel):
     model: str
 
 
-def _write_env_vars(updates: dict[str, str]) -> None:
-    """Persists key=value pairs to .env, replacing existing lines for those
-    keys or appending new ones. Callers are responsible for also updating
-    the in-memory `settings` object so the running process picks up the
-    change without a restart."""
-    content = ENV_PATH.read_text().splitlines() if ENV_PATH.exists() else []
-    remaining = dict(updates)
-
-    new_content = []
-    for line in content:
-        key = line.split("=", 1)[0] if "=" in line else None
-        if key in remaining:
-            new_content.append(f"{key}={remaining.pop(key)}")
-        else:
-            new_content.append(line)
-
-    for key, value in remaining.items():
-        new_content.append(f"{key}={value}")
-
-    ENV_PATH.write_text("\n".join(new_content) + "\n")
-
-
 @router.post("/settings/omniroute-model")
-async def set_omniroute_model(update: ModelUpdate):
-    """Persists the selected model to .env and updates the running process's
-    settings in-memory so llm.py's get_llm() picks it up on the very next
-    call -- no restart needed."""
+async def set_omniroute_model(
+    update: ModelUpdate,
+    _admin: User = Depends(require_admin),
+    app_settings: AppSettingsStore = Depends(get_app_settings_store),
+):
+    """Deployment-wide: every user's requests go through the chosen model, so
+    only an admin may change it."""
     new_model = update.model.strip()
     if not new_model:
         raise HTTPException(status_code=400, detail="Model cannot be empty")
 
-    try:
-        _write_env_vars({"OMNIROUTE_MODEL": new_model})
-        settings.OMNIROUTE_MODEL = new_model
-        logger.info(f"OmniRoute model updated to {new_model!r} via Settings API.")
-        return {"message": "Model updated successfully"}
-
-    except OSError as e:
-        logger.error(f"Failed to update .env file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save model selection")
+    await app_settings.set_llm_model(new_model)
+    logger.info(f"OmniRoute model updated to {new_model!r}.")
+    return {"message": "Model updated successfully"}
 
 
-class KiteCredentialsUpdate(BaseModel):
+class BrokerCredentialsUpdate(BaseModel):
+    broker: str = "kite"
     api_key: str
     api_secret: str
 
 
-@router.post("/settings/kite-credentials")
-async def set_kite_credentials(update: KiteCredentialsUpdate, _user: User = Depends(get_current_user)):
-    """Lets the operator paste their Zerodha Kite Connect app credentials in
-    from the Settings page instead of SSHing in to edit .env by hand. Same
-    per-deployment shape as the rest of this app (see backend/routers/broker.py's
-    module docstring) -- one credential pair for the whole server, not
-    per-user."""
+@router.get("/settings/broker-credentials")
+async def get_broker_credentials(
+    broker: str = "kite",
+    user: User = Depends(get_current_user),
+    store: BrokerCredentialStore = Depends(get_credential_store),
+):
+    """Never returns the secret -- only whether one is stored, and enough of
+    the key to recognise which account it is."""
+    return await store.status(user.id, broker)
+
+
+@router.post("/settings/broker-credentials")
+async def set_broker_credentials(
+    update: BrokerCredentialsUpdate,
+    user: User = Depends(get_current_user),
+    store: BrokerCredentialStore = Depends(get_credential_store),
+):
     api_key = update.api_key.strip()
     api_secret = update.api_secret.strip()
     if not api_key or not api_secret:
         raise HTTPException(status_code=400, detail="Both API key and secret are required")
 
     try:
-        _write_env_vars({"KITE_API_KEY": api_key, "KITE_API_SECRET": api_secret})
-        settings.KITE_API_KEY = api_key
-        settings.KITE_API_SECRET = api_secret
-        logger.info("Kite API credentials updated via Settings API.")
-        return {"message": "Credentials saved"}
+        await store.save(user.id, update.broker, api_key=api_key, api_secret=api_secret)
+    except CredentialEncryptionUnavailable:
+        logger.error("Refused to store broker credentials: CREDENTIAL_ENCRYPTION_KEY unset")
+        raise HTTPException(
+            status_code=503,
+            detail="Server is missing its credential encryption key; credentials were not saved",
+        )
 
-    except OSError as e:
-        logger.error(f"Failed to update .env file: {e}")
-        raise HTTPException(status_code=500, detail="Failed to save credentials")
+    return await store.status(user.id, update.broker)
+
+
+@router.delete("/settings/broker-credentials")
+async def delete_broker_credentials(
+    broker: str = "kite",
+    user: User = Depends(get_current_user),
+    store: BrokerCredentialStore = Depends(get_credential_store),
+):
+    await store.delete(user.id, broker)
+    return await store.status(user.id, broker)

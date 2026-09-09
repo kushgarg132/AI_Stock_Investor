@@ -11,6 +11,13 @@ def _to_user(doc: dict) -> User:
     return User(**doc)
 
 
+def _role_for(email: str) -> str:
+    from backend.configs.settings import settings
+
+    admins = {e.strip().lower() for e in settings.ADMIN_EMAILS if e.strip()}
+    return "admin" if email.lower() in admins else "user"
+
+
 class UserStore:
     """Mongo-backed user store. Collection `users`, unique index on
     google_sub. This is the one and only place a User document is ever
@@ -38,13 +45,12 @@ class UserStore:
     async def upsert_from_google(
         self, google_sub: str, email: str, name: str, picture: Optional[str]
     ) -> User:
+        role = _role_for(email)
         existing = await self.collection.find_one({"google_sub": google_sub})
         if existing is not None:
-            await self.collection.update_one(
-                {"google_sub": google_sub},
-                {"$set": {"email": email, "name": name, "picture": picture}},
-            )
-            existing.update({"email": email, "name": name, "picture": picture})
+            fields = {"email": email, "name": name, "picture": picture, "role": role}
+            await self.collection.update_one({"google_sub": google_sub}, {"$set": fields})
+            existing.update(fields)
             return _to_user(existing)
 
         user = User(
@@ -54,6 +60,7 @@ class UserStore:
             name=name,
             picture=picture,
             created_at=datetime.now(timezone.utc),
+            role=role,
         )
         await self.collection.insert_one(user.model_dump())
         return user

@@ -26,3 +26,11 @@ async def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="User no longer exists")
     return user
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    """Gate for deployment-wide settings, which are shared by every user and
+    so must not be writable by merely being signed in."""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return user

@@ -21,11 +21,12 @@ from backend.ws import routes as ws_routes
 from backend.configs.logging_config import setup_logging
 from backend.database import db
 from backend.instruments.master import InstrumentMaster
+from backend.app_settings import AppSettingsStore
+from backend.auth.broker_credentials import BrokerCredentialStore, fernet_from_settings
 from backend.instruments.loader import (
     SeedFileSource,
     refresh_instruments,
     refresh_from_free_public_sources,
-    refresh_from_kite_if_connected,
 )
 
 # Setup Logging
@@ -73,12 +74,14 @@ async def startup_db_client():
     free_count = await refresh_from_free_public_sources(master)
     if free_count:
         logger.info(f"Instrument master expanded from free NSE/BSE lists: {free_count} upserted.")
-    kite_count = await refresh_from_kite_if_connected()
-    if kite_count:
-        logger.info(f"Instrument master expanded from Kite: {kite_count} upserted.")
+    # No Kite refresh here any more: credentials are per-user, and at startup
+    # there is no user in scope. It happens when someone connects their broker
+    # (see routers/broker.py), which is also when a fresh daily token exists.
 
     await SuggestionStore(db.db).ensure_indexes()
     await PrefsStore(db.db).ensure_indexes()
+    await BrokerCredentialStore(db.db, fernet_from_settings()).ensure_indexes()
+    await AppSettingsStore(db.db).load_into_cache()
 
     # Post-close scan, sentiment refresh and suggestion expiry.
     scheduler.start(db.db, db.redis)

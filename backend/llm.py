@@ -1,4 +1,5 @@
 
+from backend.app_settings import current_llm_model
 from backend.configs.settings import settings
 from typing import Optional, List, Any, AsyncIterator, Dict, Union
 import logging
@@ -104,7 +105,7 @@ class LLMService:
         llms = []
         for key in keys:
             llms.append(ChatOpenAI(
-                model=settings.OMNIROUTE_MODEL,
+                model=current_llm_model(),
                 api_key=key,
                 base_url=settings.OMNIROUTE_BASE_URL,
                 temperature=0.0,

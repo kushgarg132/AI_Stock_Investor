@@ -2,25 +2,50 @@ from datetime import datetime, timezone
 
 import httpx
 import pytest
+from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from mongomock_motor import AsyncMongoMockClient
 
+from backend.app_settings import AppSettingsStore
+from backend.auth.broker_credentials import BrokerCredentialStore
 from backend.auth.dependency import get_current_user
 from backend.auth.models import User
 from backend.routers import settings as settings_router
 
-_USER = User(
-    id="alice", google_sub="sub-1", email="alice@example.com", name="Alice",
-    picture=None, created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
-)
+
+def _user(user_id="alice", role="user"):
+    return User(
+        id=user_id, google_sub=f"sub-{user_id}", email=f"{user_id}@example.com",
+        name=user_id.title(), picture=None,
+        created_at=datetime(2024, 1, 1, tzinfo=timezone.utc), role=role,
+    )
+
+
+_USER = _user()
 
 
 @pytest.fixture
-def client():
+def db():
+    return AsyncMongoMockClient()["test_db"]
+
+
+def _client(db, user=_USER):
     app = FastAPI()
     app.include_router(settings_router.router, prefix="/api/v1")
-    app.dependency_overrides[get_current_user] = lambda: _USER
+    app.dependency_overrides[get_current_user] = lambda: user
+    app.dependency_overrides[settings_router.get_credential_store] = (
+        lambda: BrokerCredentialStore(db, Fernet(Fernet.generate_key()))
+    )
+    app.dependency_overrides[settings_router.get_app_settings_store] = (
+        lambda: AppSettingsStore(db)
+    )
     return TestClient(app)
+
+
+@pytest.fixture
+def client(db):
+    return _client(db)
 
 
 class _FakeModelsResponse:
@@ -64,49 +89,101 @@ def test_get_omniroute_model_returns_current_setting(client):
     assert "model" in resp.json()
 
 
-def test_set_omniroute_model_persists_to_env_file(client, tmp_path, monkeypatch):
-    env_file = tmp_path / ".env"
-    env_file.write_text("SOME_OTHER_VAR=1\nOMNIROUTE_MODEL=old-model\n")
-    monkeypatch.setattr(settings_router, "ENV_PATH", env_file)
+# --- deployment-wide settings are admin-only -------------------------------
+
+def test_a_normal_user_cannot_change_the_deployment_model(client):
+    resp = client.post("/api/v1/settings/omniroute-model", json={"model": "aug/sonnet5-high"})
+    assert resp.status_code == 403
+
+
+def test_an_admin_can_change_the_deployment_model(db):
+    client = _client(db, user=_user("boss", role="admin"))
 
     resp = client.post("/api/v1/settings/omniroute-model", json={"model": "aug/sonnet5-high"})
     assert resp.status_code == 200
 
-    updated = env_file.read_text()
-    assert "OMNIROUTE_MODEL=aug/sonnet5-high" in updated
-    assert "SOME_OTHER_VAR=1" in updated
-
-    resp2 = client.get("/api/v1/settings/omniroute-model")
-    assert resp2.json()["model"] == "aug/sonnet5-high"
+    assert client.get("/api/v1/settings/omniroute-model").json()["model"] == "aug/sonnet5-high"
 
 
-def test_set_omniroute_model_rejects_empty(client):
+def test_setting_the_model_rejects_an_empty_value(db):
+    client = _client(db, user=_user("boss", role="admin"))
     resp = client.post("/api/v1/settings/omniroute-model", json={"model": "   "})
     assert resp.status_code == 400
 
 
-def test_set_kite_credentials_persists_both_to_env_file(client, tmp_path, monkeypatch):
-    env_file = tmp_path / ".env"
-    env_file.write_text("SOME_OTHER_VAR=1\n")
-    monkeypatch.setattr(settings_router, "ENV_PATH", env_file)
+def test_the_settings_router_never_writes_env_files():
+    """The .env-rewriting endpoints were the multi-tenancy hole: they mutated
+    shared process state from a request that only required being signed in."""
+    assert not hasattr(settings_router, "_write_env_vars")
+    assert not hasattr(settings_router, "ENV_PATH")
 
+
+# --- broker credentials are per-user ---------------------------------------
+
+def test_broker_credentials_start_unconfigured(client):
+    resp = client.get("/api/v1/settings/broker-credentials?broker=kite")
+    assert resp.status_code == 200
+    assert resp.json() == {"configured": False, "api_key_masked": None}
+
+
+def test_saving_broker_credentials_never_echoes_the_secret(client):
     resp = client.post(
-        "/api/v1/settings/kite-credentials",
-        json={"api_key": "kite-key", "api_secret": "kite-secret"},
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "kite", "api_key": "abcd1234wxyz", "api_secret": "super-secret"},
     )
     assert resp.status_code == 200
-
-    updated = env_file.read_text()
-    assert "KITE_API_KEY=kite-key" in updated
-    assert "KITE_API_SECRET=kite-secret" in updated
-    assert "SOME_OTHER_VAR=1" in updated
-    assert settings_router.settings.KITE_API_KEY == "kite-key"
-    assert settings_router.settings.KITE_API_SECRET == "kite-secret"
+    assert "super-secret" not in resp.text
 
 
-def test_set_kite_credentials_rejects_missing_secret(client):
+def test_saved_broker_credentials_are_reported_as_configured_and_masked(client):
+    client.post(
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "kite", "api_key": "abcd1234wxyz", "api_secret": "super-secret"},
+    )
+
+    body = client.get("/api/v1/settings/broker-credentials?broker=kite").json()
+    assert body["configured"] is True
+    assert body["api_key_masked"].endswith("wxyz")
+    assert "super-secret" not in str(body)
+
+
+def test_one_users_broker_credentials_are_invisible_to_another(db):
+    _client(db, user=_user("alice")).post(
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "kite", "api_key": "alice-key", "api_secret": "alice-secret"},
+    )
+
+    body = _client(db, user=_user("bob")).get(
+        "/api/v1/settings/broker-credentials?broker=kite"
+    ).json()
+    assert body == {"configured": False, "api_key_masked": None}
+
+
+def test_broker_credentials_reject_a_blank_secret(client):
     resp = client.post(
-        "/api/v1/settings/kite-credentials",
-        json={"api_key": "kite-key", "api_secret": "  "},
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "kite", "api_key": "abcd", "api_secret": "   "},
     )
     assert resp.status_code == 400
+
+
+def test_deleting_broker_credentials_disconnects_only_the_caller(db):
+    _client(db, user=_user("alice")).post(
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "kite", "api_key": "alice-key", "api_secret": "alice-secret"},
+    )
+    _client(db, user=_user("bob")).post(
+        "/api/v1/settings/broker-credentials",
+        json={"broker": "kite", "api_key": "bob-key", "api_secret": "bob-secret"},
+    )
+
+    assert _client(db, user=_user("alice")).delete(
+        "/api/v1/settings/broker-credentials?broker=kite"
+    ).status_code == 200
+
+    assert _client(db, user=_user("alice")).get(
+        "/api/v1/settings/broker-credentials?broker=kite"
+    ).json()["configured"] is False
+    assert _client(db, user=_user("bob")).get(
+        "/api/v1/settings/broker-credentials?broker=kite"
+    ).json()["configured"] is True

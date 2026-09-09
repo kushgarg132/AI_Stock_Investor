@@ -26,11 +26,21 @@ class Settings(BaseSettings):
 
     FINNHUB_API_KEY: Optional[str] = None
 
-    # Zerodha Kite Connect (Task 5) -- both None until a real app is
-    # registered at developers.kite.trade; KiteSessionManager must treat
-    # that as UNCONFIGURED, not crash.
-    KITE_API_KEY: Optional[str] = None
-    KITE_API_SECRET: Optional[str] = None
+    # Broker API credentials are per-user and encrypted in Mongo
+    # (backend/auth/broker_credentials.py) -- there is deliberately no
+    # deployment-wide KITE_API_KEY/KITE_API_SECRET any more. One shared pair
+    # meant every signed-in user traded the same broker account, and the
+    # settings API let any of them overwrite it.
+    #
+    # Fernet key: generate with
+    #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    # Losing it means every stored credential must be re-entered; rotating it
+    # requires re-encrypting them.
+    CREDENTIAL_ENCRYPTION_KEY: Optional[str] = None
+
+    # Emails allowed to change deployment-wide settings. Role is re-derived
+    # from this list on every login.
+    ADMIN_EMAILS: Annotated[List[str], NoDecode] = []
 
     # A connected Kite session is used for market data only. Real order
     # routing is not implemented: the ExecutionClient protocol is the seam it
@@ -69,6 +79,13 @@ class Settings(BaseSettings):
     def split_cors_origins(cls, v):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("ADMIN_EMAILS", mode="before")
+    @classmethod
+    def split_admin_emails(cls, v):
+        if isinstance(v, str):
+            return [email.strip() for email in v.split(",") if email.strip()]
         return v
 
     @field_validator("OMNIROUTE_API_KEYS", mode="before")
