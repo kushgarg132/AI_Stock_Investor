@@ -10,7 +10,7 @@ where to start — nothing else in this repo tracks it.
 | Phase | Goal | Blocked by | Status |
 |---|---|---|---|
 | 0 | Rename to NeoTrade | — | **done 2026-09-09** |
-| 1 | Multi-tenancy security | — | not started |
+| 1 | Multi-tenancy security | — | **done 2026-09-09** |
 | 2 | Broker adapter layer | 1 | not started |
 | 3 | Safety rails + backtest gate | — | not started |
 | 4 | Wire the three intraday strategies | 3 | not started |
@@ -70,34 +70,40 @@ already authorized). Nothing in the codebase can do this step.
 
 ---
 
-## Phase 1 — Multi-tenancy security
+## Phase 1 — Multi-tenancy security — **done 2026-09-09**
 
-**Goal.** Make a second human safe to add. Today any signed-in user can overwrite everyone's
-broker credentials.
+A second human is now safe to add. What changed:
 
-**Why now:** this is the only phase whose absence is actively dangerous, and every later
-phase touches broker credentials.
+- **Broker credentials are per-user and encrypted** — `backend/auth/broker_credentials.py`,
+  collection `broker_credentials`, Fernet-encrypted with `CREDENTIAL_ENCRYPTION_KEY`. The
+  store refuses to save when that key is unset rather than writing plaintext. The API is
+  write-only: reads return `{configured, api_key_masked}`, never the secret.
+- **Broker sessions are per-user** — the cache key is
+  `broker:{user_id}:kite:access_token`, not the old fixed `kite:access_token`.
+- **`_write_env_vars` is gone**, with both endpoints that called it. Nothing writes `.env`
+  or mutates the settings singleton at runtime; a test asserts the symbols no longer exist.
+- **Roles exist** — `User.role`, `require_admin` in `backend/auth/dependency.py`, populated
+  from `ADMIN_EMAILS` and re-derived on every login, so revoking is an env edit plus a
+  re-login.
+- **The LLM model moved to Mongo** (`backend/app_settings.py`) behind that admin check. It
+  is genuinely deployment-wide, so it stays shared rather than becoming per-user. A
+  process-level cache keeps it reaching the synchronous `get_llm()` without a restart.
+- **`/trading/start` reads risk caps from `PrefsStore`** instead of the request body, which
+  could previously size past the user's saved limits.
 
-**Work:**
+Deployment gained two env vars: `CREDENTIAL_ENCRYPTION_KEY` (Fernet) and `ADMIN_EMAILS`.
+Both are wired through `docker-compose.yml`. Losing the encryption key means every stored
+credential must be re-entered.
 
-- Delete `_write_env_vars` (`backend/routers/settings.py:77-96`) and the endpoints that call
-  it (`:99-116`, `:119-144`). Runtime configuration must never rewrite `.env` on disk or
-  mutate the `settings` singleton.
-- Move broker credentials into a per-user Mongo document, encrypted at rest, with the key
-  from the environment. Never returned to the client — write-only, with a boolean
-  "connected" state for display.
-- Scope the broker session cache by user: the fixed Redis key `kite:access_token`
-  (`backend/auth/kite_session.py:42`) becomes `broker:{user_id}:{broker}:access_token`.
-- Rebuild `KiteSessionManager` construction (`backend/routers/broker.py`,
-  `backend/routers/trading.py:99-122`) to take the caller's credentials rather than
-  `settings`.
-- Add a role field to `User` and an admin dependency for anything deployment-wide.
-- Read risk caps from `PrefsStore` in `/trading/start` instead of trusting the request body
-  (`routers/trading.py:158-215`) — match what `scheduler.py:52-59` already does correctly.
+### Notes
 
-**Done when:** two different users can connect two different Kite accounts simultaneously
-and neither sees the other's data or can alter the other's credentials; a test asserts a
-non-admin cannot reach any deployment-wide setting; no code path writes `.env`.
+- `cryptography` was only ever installed transitively; it is now declared in
+  `backend/requirements.txt`, since the container build would otherwise be a coin flip.
+- The old startup Kite instrument refresh was deleted rather than moved: credentials are
+  per-user and at startup no user is in scope. It runs on broker connect instead, which is
+  also when a fresh daily token exists.
+- Still deliberately shared: the `instruments` master and the `sentiment:{symbol}` cache.
+  Both are market-wide reference data, not personal.
 
 ---
 

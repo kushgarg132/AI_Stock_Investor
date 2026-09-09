@@ -151,9 +151,7 @@ the revived chain emits `Intent` and is scored by `composite.py` like everything
 
 | Limit | Where | Consequence |
 |---|---|---|
-| One broker session for the whole deployment | `backend/auth/kite_session.py:42,105-107` (fixed Redis key `kite:access_token`), `backend/routers/broker.py:9-13`, `backend/routers/trading.py:99-122` | Every signed-in user shares one Kite account |
-| Broker credentials written to `.env` on disk and into the settings singleton, behind auth only | `backend/routers/settings.py:77-96,119-144` | **Any signed-in user overwrites everyone's credentials.** No admin/role concept exists |
-| No real order placement anywhere | only `SimulatedExecutionClient`; `TRADING_LIVE_ENABLED` refuses to start (`routers/trading.py:164-168`) | Live trading is a from-scratch build |
+| No real order placement anywhere | only `SimulatedExecutionClient`; `TRADING_LIVE_ENABLED` refuses to start (`routers/trading.py`) | Live trading is a from-scratch build |
 | No backtest gate | nothing marks a strategy live-eligible; `backend/strategies/registry.py:16-59` is the only filter | A registered strategy trades immediately |
 | Single-process state | `_RUNS` (`routers/trading.py:53`), `ws/hub.py:9-10`, `scheduler.py:8-10` | Breaks with more than one worker |
 | `llm_service` module singleton | `backend/llm.py:125` | Per-user model choice (`omniroute_model` in `user_prefs`) is stored but never read |
@@ -234,8 +232,8 @@ the first extra user.
 
 | Gap (§1.9 / §1.8) | Closed by |
 |---|---|
-| Shared-credential write hole; no admin role | Phase 1 |
-| One broker session per deployment | Phase 1, generalized in Phase 2 |
+| Shared-credential write hole; no admin role | Phase 1 (done) |
+| One broker session per deployment | Phase 1 (done); generalized to more brokers in Phase 2 |
 | Kite called directly throughout | Phase 2 |
 | No kill-switch, no capital caps, no backtest gate; drawdown/Sharpe uncomputed | Phase 3 |
 | Three intraday strategies unregistered | Phase 4 |
