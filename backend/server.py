@@ -39,7 +39,7 @@ from backend.mcp_tools import stock_scanner
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="API for AI Stock Investor Platform",
+    description="API for NeoTrade Platform",
     version=settings.VERSION,
     openapi_url=f"{settings.API_PREFIX}/openapi.json",
     docs_url=f"{settings.API_PREFIX}/docs",
@@ -61,7 +61,7 @@ app.include_router(auth_router.router, prefix=settings.API_PREFIX, tags=["Auth"]
 # Database Events
 @app.on_event("startup")
 async def startup_db_client():
-    logger.info("Starting up AI Stock Investor API...")
+    logger.info("Starting up NeoTrade API...")
     await db.connect_to_database()
     logger.info("Database connected.")
     master = InstrumentMaster(db.db)
@@ -95,7 +95,7 @@ async def startup_db_client():
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    logger.info("Shutting down AI Stock Investor API...")
+    logger.info("Shutting down NeoTrade API...")
     await db.close_database_connection()
     logger.info("Database disconnected.")
 
@@ -150,7 +150,7 @@ async def redirect_redoc():
 @app.head("/")
 @app.get("/")
 async def root():
-    return {"message": "AI Stock Investor API is running"}
+    return {"message": "NeoTrade API is running"}
 
 if __name__ == "__main__":
     uvicorn.run("server:app", host="0.0.0.0", port=settings.SERVER_PORT, reload=True)

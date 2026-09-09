@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://ai-stock.161.118.167.148.nip.io/api/:path*"
+      "destination": "https://neotrade.161.118.167.148.nip.io/api/:path*"
     },
     {
       "source": "/(.*)",

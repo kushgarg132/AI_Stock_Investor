@@ -14,7 +14,7 @@ const Sidebar = ({ pendingCount = 0 }) => {
         <p className="font-[family-name:var(--font-narrow)] font-bold uppercase tracking-[0.2em] text-xs leading-none">
           Contract Note
         </p>
-        <p className="doc-meta mt-1.5">AI Stock Investor</p>
+        <p className="doc-meta mt-1.5">NeoTrade</p>
       </div>
 
       <nav className="flex-1 py-2 overflow-y-auto" aria-label="Sections">

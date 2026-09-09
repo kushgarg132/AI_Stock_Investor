@@ -1,4 +1,4 @@
-name: ai-stock-investor
+name: neotrade
 # Backend rebuilds+redeploys are automated: pushes to main that touch
 # backend/** or this file trigger .github/workflows/deploy-backend.yml on the
 # VM's self-hosted runner.
@@ -11,7 +11,7 @@ services:
   backend:
     build:
       context: ./backend
-    container_name: ai-stock-investor-backend
+    container_name: neotrade-backend
     restart: unless-stopped
     environment:
       MONGODB_URL: ${MONGODB_URL}
@@ -38,7 +38,7 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: ai-stock-investor-frontend
+    container_name: neotrade-frontend
     restart: unless-stopped
     ports:
       - "80:80"

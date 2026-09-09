@@ -33,7 +33,7 @@ const api = axios.create({
   withCredentials: true,
 });
 
-const TOKEN_STORAGE_KEY = 'asi_token';
+const TOKEN_STORAGE_KEY = 'neotrade_token';
 
 // Requests that must never trigger a refresh attempt on failure: refreshing
 // itself would recurse, and a failed Google login is a real login failure,

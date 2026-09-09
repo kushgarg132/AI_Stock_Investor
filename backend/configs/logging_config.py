@@ -46,4 +46,4 @@ def setup_logging():
     logging.getLogger("uvicorn.access").setLevel(logging.DEBUG)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     
-    return logging.getLogger("AI_Stock_Investor")
+    return logging.getLogger("NeoTrade")

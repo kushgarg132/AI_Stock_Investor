@@ -28,7 +28,7 @@ const Login = () => {
           <h1 className="font-[family-name:var(--font-narrow)] font-bold uppercase tracking-[0.2em] text-sm">
             Contract Note
           </h1>
-          <p className="doc-meta mt-1.5">AI Stock Investor · NSE · {formatNoteDate()}</p>
+          <p className="doc-meta mt-1.5">NeoTrade · NSE · {formatNoteDate()}</p>
         </div>
 
         <div className="px-6 py-8">

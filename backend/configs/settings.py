@@ -4,7 +4,7 @@ from typing import Annotated, Optional, List
 
 class Settings(BaseSettings):
     # Project Info
-    PROJECT_NAME: str = "AI Stock Investor"
+    PROJECT_NAME: str = "NeoTrade"
     VERSION: str = "1.0.0"
     API_PREFIX: str = "/api/v1"
     SERVER_PORT: int = 8001  # Port the server runs on
@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     # and DB-backed (backend/auth/refresh_store.py) rather than a second
     # JWT, specifically so it can be revoked before it naturally expires.
     REFRESH_TOKEN_MAX_AGE_SECONDS: int = 60 * 24 * 3600  # 60 days
-    REFRESH_COOKIE_NAME: str = "asi_refresh"
+    REFRESH_COOKIE_NAME: str = "neotrade_refresh"
 
     # Explicit CORS allowlist -- replaces allow_origins=["*"], which is an
     # invalid combination with allow_credentials=True for real credentialed

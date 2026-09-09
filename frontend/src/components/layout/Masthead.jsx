@@ -57,7 +57,7 @@ const Masthead = ({ noteNumber }) => {
               Contract Note
             </h1>
             <p className="doc-meta mt-1 truncate">
-              AI Stock Investor · NSE · {formatNoteDate()}
+              NeoTrade · NSE · {formatNoteDate()}
             </p>
           </Link>
 

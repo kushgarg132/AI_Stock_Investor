@@ -82,7 +82,7 @@ jobs:
       - name: Run pytest
         run: pytest -q
       - name: Build backend image
-        run: docker build -t ai-stock-investor-backend-ci ./backend
+        run: docker build -t neotrade-backend-ci ./backend
 
   frontend:
     name: Frontend build & lint
