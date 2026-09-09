@@ -87,33 +87,39 @@ async def refresh_from_free_public_sources(master: InstrumentMaster) -> int:
     return total
 
 
-async def refresh_instruments_from_kite(session, api_key: str) -> int:
-    """Best-effort: pulls Kite's real NSE+BSE instrument dump (thousands of
-    symbols, e.g. small/mid-caps like Mishtann Foods that the bundled seed
-    file never had) into the instrument master, using the session of whichever
-    user just connected. The instrument master is shared reference data, not
-    per-user, so any connected session may refresh it.
+class _AdapterAsSource:
+    """Adapts any BrokerAdapter's `instruments()` into the InstrumentSource
+    shape `refresh_instruments` expects, so every broker reuses the same
+    upsert path instead of each adapter reimplementing it."""
+
+    def __init__(self, adapter, exchanges: tuple[str, ...]) -> None:
+        self._adapter = adapter
+        self._exchanges = exchanges
+
+    async def fetch(self):
+        return await self._adapter.instruments(exchanges=self._exchanges)
+
+
+async def refresh_instruments_from_adapter(adapter, exchanges: tuple[str, ...] = ("NSE", "BSE")) -> int:
+    """Best-effort: pulls a connected broker's real NSE+BSE instrument dump
+    (thousands of symbols, e.g. small/mid-caps the bundled seed file never
+    had) into the instrument master, using whichever user's session just
+    connected. The instrument master is shared reference data, not per-user,
+    so any connected session may refresh it.
 
     A no-op (returns 0) when that session isn't ACTIVE or the database isn't
     reachable -- the seed file stays as the floor either way, this only adds.
-    Swallows every failure because its caller (the Kite connect callback) must
+    Swallows every failure because its callers (a broker connect route) must
     not fail because of it."""
-    from kiteconnect import KiteConnect
-
-    from backend.auth.kite_session import KiteSessionState
+    from backend.brokers.protocol import BrokerSessionState
     from backend.database import db
-    from backend.instruments.kite_source import KiteInstrumentSource
 
     try:
-        if await session.state() != KiteSessionState.ACTIVE:
+        if await adapter.state() != BrokerSessionState.ACTIVE:
             return 0
 
-        access_token = await session.get_access_token()
-        source = KiteInstrumentSource(
-            lambda: KiteConnect(api_key=api_key, access_token=access_token),
-            exchanges=("NSE", "BSE"),
-        )
+        source = _AdapterAsSource(adapter, exchanges)
         return await refresh_instruments(source, InstrumentMaster(db.db))
     except Exception as e:
-        logger.warning(f"Kite instrument refresh skipped: {e}")
+        logger.warning(f"Broker instrument refresh skipped: {e}")
         return 0

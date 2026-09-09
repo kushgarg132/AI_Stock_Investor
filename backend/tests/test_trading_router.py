@@ -12,6 +12,7 @@
 
 import asyncio
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -247,17 +248,6 @@ def _instruments():
     )]
 
 
-class _Session:
-    def __init__(self, state):
-        self._state = state
-
-    async def state(self):
-        return self._state
-
-    async def get_access_token(self):
-        return "kite-access-token"
-
-
 class _Credentials:
     """Stands in for BrokerCredentialStore. `stored=None` is a user who has
     never entered broker credentials, which must still be able to trade."""
@@ -269,27 +259,53 @@ class _Credentials:
         return self._stored
 
 
-@pytest.mark.asyncio
-async def test_intraday_uses_kite_ticks_when_the_broker_is_connected(monkeypatch):
-    from backend.auth.kite_session import KiteSessionState
-    from backend.data.feeds.live_kite import KiteTickerFeed
+class _FakeAdapter:
+    """Stands in for whatever backend.brokers.registry.get_broker_adapter
+    returns -- tests care about the state()/ticker_feed() contract, not any
+    real broker's implementation."""
 
-    monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.ACTIVE))
+    def __init__(self, state, feed=None):
+        self._state = state
+        self._feed = feed
+
+    async def state(self):
+        return self._state
+
+    async def ticker_feed(self, instrument_tokens, timeframe, timeframe_seconds):
+        return self._feed
+
+
+class _StubFeed:
+    pass
+
+
+@pytest.mark.asyncio
+async def test_intraday_uses_a_broker_tick_feed_when_the_broker_is_connected(monkeypatch):
+    from backend.brokers.protocol import BrokerSessionState
+
+    stub = _StubFeed()
+    monkeypatch.setattr(
+        trading, "get_broker_adapter",
+        AsyncMock(return_value=_FakeAdapter(BrokerSessionState.ACTIVE, feed=stub)),
+    )
     monkeypatch.setattr(trading, "db", _FakeDb)
 
     feed = await trading.build_feed(
         _instruments(), "INTRADAY", 60.0, user_id="alice", credentials=_Credentials(),
     )
 
-    assert isinstance(feed, KiteTickerFeed)
+    assert feed is stub
 
 
 @pytest.mark.asyncio
 async def test_intraday_falls_back_to_polling_without_a_broker_session(monkeypatch):
-    from backend.auth.kite_session import KiteSessionState
+    from backend.brokers.protocol import BrokerSessionState
     from backend.data.feeds.polling_live import PollingLiveFeed
 
-    monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.NEEDS_LOGIN))
+    monkeypatch.setattr(
+        trading, "get_broker_adapter",
+        AsyncMock(return_value=_FakeAdapter(BrokerSessionState.NEEDS_LOGIN)),
+    )
     monkeypatch.setattr(trading, "db", _FakeDb)
 
     feed = await trading.build_feed(
@@ -300,11 +316,16 @@ async def test_intraday_falls_back_to_polling_without_a_broker_session(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_intraday_polls_when_the_user_has_no_broker_credentials(monkeypatch):
-    """A user who has never connected a broker still gets a working feed --
-    it must not fall through to someone else's session."""
+async def test_intraday_polls_when_no_connected_broker_supports_streaming(monkeypatch):
+    """Active but without streaming support (Upstox/Angel One today) must
+    fall back cleanly, not error."""
+    from backend.brokers.protocol import BrokerSessionState
     from backend.data.feeds.polling_live import PollingLiveFeed
 
+    monkeypatch.setattr(
+        trading, "get_broker_adapter",
+        AsyncMock(return_value=_FakeAdapter(BrokerSessionState.ACTIVE, feed=None)),
+    )
     monkeypatch.setattr(trading, "db", _FakeDb)
 
     feed = await trading.build_feed(
@@ -318,10 +339,13 @@ async def test_intraday_polls_when_the_user_has_no_broker_credentials(monkeypatc
 async def test_longterm_never_uses_the_tick_feed(monkeypatch):
     """Daily bars have nothing to gain from tick aggregation, and requiring a
     broker login to run a long-term strategy would be a regression."""
-    from backend.auth.kite_session import KiteSessionState
+    from backend.brokers.protocol import BrokerSessionState
     from backend.data.feeds.polling_live import PollingLiveFeed
 
-    monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.ACTIVE))
+    monkeypatch.setattr(
+        trading, "get_broker_adapter",
+        AsyncMock(return_value=_FakeAdapter(BrokerSessionState.ACTIVE, feed=_StubFeed())),
+    )
     monkeypatch.setattr(trading, "db", _FakeDb)
 
     feed = await trading.build_feed(

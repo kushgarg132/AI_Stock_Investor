@@ -1,20 +1,22 @@
-"""/broker/kite/* -- the Settings card's view of the Kite session.
+"""/broker/{broker}/* -- the Settings card's view of a broker session, for
+any broker in backend.brokers.registry.BROKERS.
 
-KiteSessionManager itself is already covered; what matters here is that the
-routes report a state the UI can act on and never leak a broker token to the
+Adapter internals are already covered per-broker (test_kite_adapter.py,
+test_upstox_adapter.py, test_angel_one_adapter.py); what matters here is
+that the routes report a state the UI can act on, dispatch to the right
+adapter via the credential store, and never leak a broker token to the
 client.
 """
 
 from datetime import datetime, timezone
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.auth.broker_credentials import BrokerCredentials, get_credential_store
+from backend.auth.broker_credentials import get_credential_store
 from backend.auth.dependency import get_current_user
-from backend.auth.kite_session import KiteSessionState
 from backend.auth.models import User
+from backend.brokers.protocol import BrokerSessionState
 from backend.routers import broker
 
 _USER = User(
@@ -23,110 +25,142 @@ _USER = User(
 )
 
 
-class _FakeSession:
-    def __init__(self, state=KiteSessionState.NEEDS_LOGIN, fail_exchange=False):
+class _FakeAdapter:
+    def __init__(self, state=BrokerSessionState.NEEDS_LOGIN, fail_connect=False, login_url="https://example.com/login"):
         self._state = state
-        self.fail_exchange = fail_exchange
+        self.fail_connect = fail_connect
+        self._login_url = login_url
         self.cleared = False
-        self.exchanged = None
+        self.connected_with = None
 
     async def state(self):
         return self._state
 
-    async def generate_login_url(self):
-        if self._state == KiteSessionState.UNCONFIGURED:
-            raise RuntimeError("KITE_API_KEY is not configured")
-        return "https://kite.zerodha.com/connect/login?api_key=abc&v=3"
+    async def login_url(self):
+        if self._state == BrokerSessionState.UNCONFIGURED:
+            raise RuntimeError("API key is not configured")
+        return self._login_url
 
-    async def exchange_request_token(self, request_token):
-        if self.fail_exchange:
-            raise Exception("token expired")
-        self.exchanged = request_token
-        self._state = KiteSessionState.ACTIVE
+    async def connect(self, **fields):
+        if self.fail_connect:
+            raise Exception("broker rejected the attempt")
+        self.connected_with = fields
+        self._state = BrokerSessionState.ACTIVE
         return "access-token-value"
 
-    async def clear(self):
+    async def disconnect(self):
         self.cleared = True
-        self._state = KiteSessionState.NEEDS_LOGIN
+        self._state = BrokerSessionState.NEEDS_LOGIN
+
+    async def instruments(self, exchanges=("NSE", "BSE")):
+        return []
 
 
-class _FakeCredentials:
-    """Stands in for BrokerCredentialStore: the routes only need the caller's
-    own key to hand to the instrument refresh."""
+def _client(adapter, monkeypatch):
+    async def fake_get_broker_adapter(broker_name, user_id, credentials, redis):
+        return adapter
 
-    async def get(self, user_id, broker_name):
-        return BrokerCredentials(api_key="ak", api_secret="as")
+    monkeypatch.setattr(broker, "get_broker_adapter", fake_get_broker_adapter)
 
-
-def _client(session):
     app = FastAPI()
     app.include_router(broker.router, prefix="/api/v1")
     app.dependency_overrides[get_current_user] = lambda: _USER
-    app.dependency_overrides[broker.get_kite_session] = lambda: session
-    app.dependency_overrides[get_credential_store] = lambda: _FakeCredentials()
+    app.dependency_overrides[get_credential_store] = lambda: None
     return TestClient(app)
 
 
-def test_status_tells_the_ui_what_to_do_next():
-    resp = _client(_FakeSession()).get("/api/v1/broker/kite/status")
+def test_list_returns_the_known_brokers(monkeypatch):
+    resp = _client(_FakeAdapter(), monkeypatch).get("/api/v1/broker/list")
+    assert resp.status_code == 200
+    assert set(resp.json()["brokers"]) == {"kite", "upstox", "angel_one"}
+
+
+def test_unknown_broker_is_a_404():
+    app = FastAPI()
+    app.include_router(broker.router, prefix="/api/v1")
+    app.dependency_overrides[get_current_user] = lambda: _USER
+    app.dependency_overrides[get_credential_store] = lambda: None
+
+    resp = TestClient(app).get("/api/v1/broker/robinhood/status")
+    assert resp.status_code == 404
+
+
+def test_status_tells_the_ui_what_to_do_next(monkeypatch):
+    resp = _client(_FakeAdapter(), monkeypatch).get("/api/v1/broker/kite/status")
 
     assert resp.status_code == 200
-    assert resp.json() == {
-        "state": "NEEDS_LOGIN", "connected": False, "action": "Connect your Zerodha account",
-    }
+    assert resp.json() == {"state": "NEEDS_LOGIN", "connected": False, "action": "Connect your account"}
 
 
-def test_an_active_session_needs_no_action():
-    resp = _client(_FakeSession(KiteSessionState.ACTIVE)).get("/api/v1/broker/kite/status")
+def test_an_active_session_needs_no_action(monkeypatch):
+    resp = _client(_FakeAdapter(BrokerSessionState.ACTIVE), monkeypatch).get("/api/v1/broker/kite/status")
 
     assert resp.json()["connected"] is True
     assert resp.json()["action"] is None
 
 
-def test_login_url_is_returned_for_the_human_to_visit():
-    resp = _client(_FakeSession()).get("/api/v1/broker/kite/login-url")
+def test_login_url_is_returned_for_the_human_to_visit(monkeypatch):
+    resp = _client(_FakeAdapter(), monkeypatch).get("/api/v1/broker/kite/login-url")
 
     assert resp.status_code == 200
-    assert resp.json()["url"].startswith("https://kite.zerodha.com/connect/login")
+    assert resp.json()["url"] == "https://example.com/login"
 
 
-def test_login_url_without_credentials_is_a_client_error():
-    resp = _client(_FakeSession(KiteSessionState.UNCONFIGURED)).get("/api/v1/broker/kite/login-url")
+def test_login_url_is_null_for_a_credential_based_broker(monkeypatch):
+    resp = _client(_FakeAdapter(login_url=None), monkeypatch).get("/api/v1/broker/angel_one/login-url")
+
+    assert resp.status_code == 200
+    assert resp.json()["url"] is None
+
+
+def test_login_url_without_credentials_is_a_client_error(monkeypatch):
+    resp = _client(_FakeAdapter(BrokerSessionState.UNCONFIGURED), monkeypatch).get("/api/v1/broker/kite/login-url")
 
     assert resp.status_code == 400
-    assert "KITE_API_KEY" in resp.json()["detail"]
+    assert "API key" in resp.json()["detail"]
 
 
-def test_callback_exchanges_the_request_token():
-    session = _FakeSession()
+def test_connect_passes_the_given_fields_to_the_adapter(monkeypatch):
+    adapter = _FakeAdapter()
 
-    resp = _client(session).post("/api/v1/broker/kite/callback", json={"request_token": "rt-123"})
+    resp = _client(adapter, monkeypatch).post("/api/v1/broker/kite/connect", json={"request_token": "rt-123"})
 
     assert resp.status_code == 200
     assert resp.json() == {"state": "ACTIVE", "connected": True}
-    assert session.exchanged == "rt-123"
+    assert adapter.connected_with == {"request_token": "rt-123"}
 
 
-def test_callback_never_returns_the_access_token():
+def test_connect_never_returns_the_access_token(monkeypatch):
     """The browser has no use for a broker token and every reason not to
     hold one."""
-    resp = _client(_FakeSession()).post("/api/v1/broker/kite/callback", json={"request_token": "rt-123"})
+    resp = _client(_FakeAdapter(), monkeypatch).post("/api/v1/broker/kite/connect", json={"request_token": "rt-123"})
 
     assert "access-token-value" not in resp.text
 
 
-def test_a_rejected_request_token_is_reported_as_a_gateway_failure():
-    resp = _client(_FakeSession(fail_exchange=True)).post(
-        "/api/v1/broker/kite/callback", json={"request_token": "stale"}
+def test_connect_only_sends_the_fields_the_caller_actually_gave(monkeypatch):
+    adapter = _FakeAdapter()
+
+    _client(adapter, monkeypatch).post(
+        "/api/v1/broker/angel_one/connect",
+        json={"client_code": "C1", "password": "p", "totp": "123456"},
+    )
+
+    assert adapter.connected_with == {"client_code": "C1", "password": "p", "totp": "123456"}
+
+
+def test_a_rejected_connection_is_reported_as_a_gateway_failure(monkeypatch):
+    resp = _client(_FakeAdapter(fail_connect=True), monkeypatch).post(
+        "/api/v1/broker/kite/connect", json={"request_token": "stale"}
     )
 
     assert resp.status_code == 502
 
 
-def test_disconnect_forgets_the_cached_token():
-    session = _FakeSession(KiteSessionState.ACTIVE)
+def test_disconnect_forgets_the_cached_token(monkeypatch):
+    adapter = _FakeAdapter(BrokerSessionState.ACTIVE)
 
-    resp = _client(session).post("/api/v1/broker/kite/disconnect")
+    resp = _client(adapter, monkeypatch).post("/api/v1/broker/kite/disconnect")
 
     assert resp.json() == {"state": "NEEDS_LOGIN", "connected": False}
-    assert session.cleared is True
+    assert adapter.cleared is True

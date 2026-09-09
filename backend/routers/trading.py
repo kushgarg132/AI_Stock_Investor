@@ -23,16 +23,15 @@ from pydantic import BaseModel
 
 from backend.auth.broker_credentials import get_credential_store
 from backend.auth.dependency import get_current_user
-from backend.auth.kite_session import KiteSessionManager, KiteSessionState
 from backend.auth.models import User
+from backend.brokers.protocol import BrokerSessionState
+from backend.brokers.registry import BROKERS, get_broker_adapter
 from backend.configs.settings import settings
 from backend.prefs import PrefsStore
 from backend.components.quant.indian_stocks import ALL_SCAN_STOCKS
 from backend.core.clock import SystemClock
 from backend.database import db
 from backend.data.providers.yfinance_provider import YFinanceProvider
-from backend.data.feeds.live_kite import KiteTickerFeed
-from kiteconnect import KiteTicker
 from backend.data.feeds.polling_live import PollingLiveFeed
 from backend.engine.execution.simulated import SimulatedExecutionClient
 from backend.engine.persistence import LedgerStore
@@ -99,28 +98,27 @@ def start_background_run(coro, run_id: Optional[str] = None, runs: Optional[RunS
 
 
 async def build_feed(instruments, mode: str, poll_interval_seconds: float, user_id: str, credentials):
-    """Real Kite ticks when *this user's* broker session is connected, polled
-    quotes otherwise.
+    """Real broker ticks when this user has a connected session that
+    supports streaming, polled quotes otherwise.
 
     Only intraday benefits: a ticker feed aggregates ticks into bars as they
     arrive, which is exactly what a 5-minute strategy wants and pointless for
     a daily one, where a poll of the current quote is both sufficient and
-    available without a broker login.
+    available without a broker login. Tries the user's connected brokers in
+    a fixed order and uses the first that both is ACTIVE and supports
+    streaming (only Kite does, today) -- BROKERS order in the registry, not
+    hardcoded here, is what a fourth streaming-capable broker would join.
     """
     if mode == "INTRADAY":
-        creds = await credentials.get(user_id, "kite")
-        if creds is not None:
-            session = KiteSessionManager(
-                creds.api_key, creds.api_secret, db.redis, user_id=user_id
-            )
-            if await session.state() == KiteSessionState.ACTIVE:
-                access_token = await session.get_access_token()
-                tokens = [i.instrument_token for i in instruments]
-                logger.info("using live Kite ticks for %d instrument(s)", len(tokens))
-                return KiteTickerFeed(
-                    lambda: KiteTicker(api_key=creds.api_key, access_token=access_token),
-                    tokens, timeframe="5m", timeframe_seconds=300.0,
-                )
+        tokens = [i.instrument_token for i in instruments]
+        for broker in BROKERS:
+            adapter = await get_broker_adapter(broker, user_id, credentials, db.redis)
+            if await adapter.state() != BrokerSessionState.ACTIVE:
+                continue
+            feed = await adapter.ticker_feed(tokens, timeframe="5m", timeframe_seconds=300.0)
+            if feed is not None:
+                logger.info("using live %s ticks for %d instrument(s)", broker, len(tokens))
+                return feed
 
     return PollingLiveFeed(
         YFinanceProvider(), instruments, timeframe=_MODE_TIMEFRAME[mode],

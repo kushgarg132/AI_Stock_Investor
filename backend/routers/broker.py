@@ -1,15 +1,17 @@
-"""/broker/* -- connecting a real Kite Connect session.
+"""/broker/{broker}/* -- connecting a real broker session, for any broker in
+backend.brokers.registry.BROKERS.
 
-Kite's login is a human-in-the-loop redirect: the browser visits Kite, Kite
-redirects back with a `request_token`, and the backend exchanges that for an
-access token that expires daily at ~06:00 IST. All of that already lives in
-backend/auth/kite_session.py; these routes are what finally let the Settings
-page drive it.
+Everything here is per-user: the caller's own credentials come from the
+encrypted store, and the resulting access token is cached under a key scoped
+to them. Connecting binds *that user* to their own broker account, never the
+deployment to one shared account (see backend/auth/broker_credentials.py).
 
-Everything here is per-user: the caller's own API key and secret come from the
-encrypted credential store, and the resulting access token is cached under a
-key scoped to them. Connecting binds *that user* to their own broker account,
-never the deployment to one shared account.
+Kite and Upstox share a redirect-based connect flow (a login_url the human
+visits, then a short-lived code exchanged for a token). Angel One has no
+redirect at all -- the human submits client code, password, and a fresh TOTP
+directly. `POST .../connect` accepts whatever fields the chosen broker's
+`connect()` needs; the caller decides which fields to send based on whether
+`login_url` came back non-null.
 """
 
 import logging
@@ -19,98 +21,111 @@ from pydantic import BaseModel
 
 from backend.auth.broker_credentials import BrokerCredentialStore, get_credential_store
 from backend.auth.dependency import get_current_user
-from backend.auth.kite_session import KiteSessionManager, KiteSessionState
 from backend.auth.models import User
+from backend.brokers.protocol import BrokerSessionState
+from backend.brokers.registry import BROKERS, UnknownBroker, get_broker_adapter
 from backend.database import db
-from backend.instruments.loader import refresh_instruments_from_kite
+from backend.instruments.loader import refresh_instruments_from_adapter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/broker", tags=["Broker"])
 
 
-async def get_kite_session(
+async def _adapter(broker: str, user: User, credentials: BrokerCredentialStore):
+    try:
+        return await get_broker_adapter(broker, user.id, credentials, db.redis)
+    except UnknownBroker as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+_ACTION = {
+    BrokerSessionState.UNCONFIGURED: "Add your API credentials in Settings",
+    BrokerSessionState.NEEDS_LOGIN: "Connect your account",
+    BrokerSessionState.DEGRADED: "Session expired -- reconnect",
+    BrokerSessionState.ACTIVE: None,
+}
+
+
+class ConnectRequest(BaseModel):
+    request_token: str | None = None  # Kite / Upstox
+    client_code: str | None = None  # Angel One
+    password: str | None = None  # Angel One
+    totp: str | None = None  # Angel One
+
+
+@router.get("/list")
+async def list_brokers():
+    return {"brokers": sorted(BROKERS)}
+
+
+@router.get("/{broker}/status")
+async def broker_status(
+    broker: str,
     user: User = Depends(get_current_user),
     credentials: BrokerCredentialStore = Depends(get_credential_store),
-) -> KiteSessionManager:
-    creds = await credentials.get(user.id, "kite")
-    return KiteSessionManager(
-        api_key=creds.api_key if creds else None,
-        api_secret=creds.api_secret if creds else None,
-        redis=db.redis,
-        user_id=user.id,
-    )
-
-
-class CallbackRequest(BaseModel):
-    request_token: str
-
-
-@router.get("/kite/status")
-async def kite_status(
-    _user: User = Depends(get_current_user),
-    session: KiteSessionManager = Depends(get_kite_session),
 ):
-    state = await session.state()
+    adapter = await _adapter(broker, user, credentials)
+    state = await adapter.state()
     return {
         "state": state.value,
-        "connected": state == KiteSessionState.ACTIVE,
-        # What the Settings card should say to do next.
-        "action": {
-            KiteSessionState.UNCONFIGURED: "Add your Kite API key and secret in Settings",
-            KiteSessionState.NEEDS_LOGIN: "Connect your Zerodha account",
-            KiteSessionState.DEGRADED: "Session expired -- reconnect",
-            KiteSessionState.ACTIVE: None,
-        }[state],
+        "connected": state == BrokerSessionState.ACTIVE,
+        "action": _ACTION[state],
     }
 
 
-@router.get("/kite/login-url")
-async def kite_login_url(
-    _user: User = Depends(get_current_user),
-    session: KiteSessionManager = Depends(get_kite_session),
-):
-    try:
-        return {"url": await session.generate_login_url()}
-    except RuntimeError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@router.post("/kite/callback")
-async def kite_callback(
-    body: CallbackRequest,
+@router.get("/{broker}/login-url")
+async def broker_login_url(
+    broker: str,
     user: User = Depends(get_current_user),
-    session: KiteSessionManager = Depends(get_kite_session),
     credentials: BrokerCredentialStore = Depends(get_credential_store),
 ):
-    """Kite redirects the browser back with a request_token; the frontend
-    hands it here. It is single-use and short-lived, so a failure here means
-    "start the login again", not "retry"."""
+    """None means this broker has no redirect step -- the frontend should
+    show the credential form directly rather than a "visit this URL" button."""
+    adapter = await _adapter(broker, user, credentials)
     try:
-        await session.exchange_request_token(body.request_token)
+        return {"url": await adapter.login_url()}
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        logger.warning("kite token exchange failed: %s", exc)
-        raise HTTPException(status_code=502, detail="Kite rejected the request token")
-
-    # Best-effort, off the response: this is what actually expands the
-    # instrument master beyond the bundled ~130-symbol seed (see loader.py) --
-    # do it the moment a session connects rather than making the operator
-    # wait for the next backend restart. The instrument master is shared
-    # reference data, so any connected user's session can refresh it.
-    creds = await credentials.get(user.id, "kite")
-    kite_count = await refresh_instruments_from_kite(session, creds.api_key) if creds else 0
-    if kite_count:
-        logger.info(f"Instrument master expanded from Kite: {kite_count} upserted.")
-
-    return {"state": (await session.state()).value, "connected": True}
 
 
-@router.post("/kite/disconnect")
-async def kite_disconnect(
-    _user: User = Depends(get_current_user),
-    session: KiteSessionManager = Depends(get_kite_session),
+@router.post("/{broker}/connect")
+async def broker_connect(
+    broker: str,
+    body: ConnectRequest,
+    user: User = Depends(get_current_user),
+    credentials: BrokerCredentialStore = Depends(get_credential_store),
 ):
-    await session.clear()
-    return {"state": (await session.state()).value, "connected": False}
+    adapter = await _adapter(broker, user, credentials)
+    fields = {k: v for k, v in body.model_dump().items() if v is not None}
+
+    try:
+        await adapter.connect(**fields)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except KeyError as exc:
+        raise HTTPException(status_code=422, detail=f"Missing field for {broker}: {exc}")
+    except Exception as exc:
+        logger.warning("%s connect failed for user %s: %s", broker, user.id, exc)
+        raise HTTPException(status_code=502, detail=f"{broker} rejected the connection attempt")
+
+    # Best-effort, off the response: expands the instrument master beyond
+    # the bundled seed the moment a session connects, using whichever broker
+    # the user just connected -- the master is shared reference data, not
+    # per-user, so any connected session may refresh it.
+    count = await refresh_instruments_from_adapter(adapter)
+    if count:
+        logger.info("Instrument master expanded from %s: %d upserted.", broker, count)
+
+    return {"state": (await adapter.state()).value, "connected": True}
+
+
+@router.post("/{broker}/disconnect")
+async def broker_disconnect(
+    broker: str,
+    user: User = Depends(get_current_user),
+    credentials: BrokerCredentialStore = Depends(get_credential_store),
+):
+    adapter = await _adapter(broker, user, credentials)
+    await adapter.disconnect()
+    return {"state": (await adapter.state()).value, "connected": False}

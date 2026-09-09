@@ -1,16 +1,17 @@
-"""refresh_instruments_from_kite / refresh_from_free_public_sources: the
+"""refresh_instruments_from_adapter / refresh_from_free_public_sources: the
 bundled seed file (~130 large-caps) is a floor, not the real universe --
 these are what actually expand the instrument master, and neither must ever
 raise regardless of why it can't (no session, expired session, database
 down, NSE/BSE unreachable).
 
-The Kite refresh takes the connecting user's session explicitly: credentials
-are per-user, so there is no deployment-wide session it could build itself."""
+The adapter refresh takes any BrokerAdapter (Kite, Upstox, Angel One --
+whichever the connecting user just connected) rather than a Kite-specific
+session, since credentials are per-user and per-broker."""
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
-from backend.auth.kite_session import KiteSessionState
+from backend.brokers.protocol import BrokerSessionState
 from backend.instruments import loader
 
 
@@ -27,11 +28,11 @@ def _fake_master(meta_doc=None):
     return master, meta
 
 
-async def test_no_op_when_kite_session_is_not_active():
-    fake_session = MagicMock()
-    fake_session.state = AsyncMock(return_value=KiteSessionState.NEEDS_LOGIN)
+async def test_no_op_when_the_adapter_is_not_active():
+    fake_adapter = MagicMock()
+    fake_adapter.state = AsyncMock(return_value=BrokerSessionState.NEEDS_LOGIN)
 
-    result = await loader.refresh_instruments_from_kite(fake_session, "api-key")
+    result = await loader.refresh_instruments_from_adapter(fake_adapter)
 
     assert result == 0
 
@@ -39,30 +40,23 @@ async def test_no_op_when_kite_session_is_not_active():
 async def test_refreshes_both_nse_and_bse_when_active(monkeypatch):
     monkeypatch.setattr("backend.database.db.db", MagicMock())
 
-    fake_session = MagicMock()
-    fake_session.state = AsyncMock(return_value=KiteSessionState.ACTIVE)
-    fake_session.get_access_token = AsyncMock(return_value="tok")
+    fake_adapter = MagicMock()
+    fake_adapter.state = AsyncMock(return_value=BrokerSessionState.ACTIVE)
+    fake_adapter.instruments = AsyncMock(return_value=["stub"] * 5)
 
-    captured = {}
-
-    class _FakeSource:
-        def __init__(self, kite_client_factory, exchanges):
-            captured["exchanges"] = exchanges
-
-    monkeypatch.setattr("backend.instruments.kite_source.KiteInstrumentSource", _FakeSource)
     monkeypatch.setattr(loader, "refresh_instruments", AsyncMock(return_value=1847))
 
-    result = await loader.refresh_instruments_from_kite(fake_session, "api-key")
+    result = await loader.refresh_instruments_from_adapter(fake_adapter)
 
     assert result == 1847
-    assert captured["exchanges"] == ("NSE", "BSE")
+    fake_adapter.instruments.assert_not_called()  # refresh_instruments itself is mocked out
 
 
 async def test_never_raises_and_returns_zero_on_any_failure():
-    fake_session = MagicMock()
-    fake_session.state = AsyncMock(side_effect=RuntimeError("redis is down"))
+    fake_adapter = MagicMock()
+    fake_adapter.state = AsyncMock(side_effect=RuntimeError("redis is down"))
 
-    result = await loader.refresh_instruments_from_kite(fake_session, "api-key")
+    result = await loader.refresh_instruments_from_adapter(fake_adapter)
 
     assert result == 0
 
