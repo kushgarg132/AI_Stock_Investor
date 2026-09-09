@@ -21,10 +21,12 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.auth.broker_credentials import get_credential_store
 from backend.auth.dependency import get_current_user
 from backend.auth.kite_session import KiteSessionManager, KiteSessionState
 from backend.auth.models import User
 from backend.configs.settings import settings
+from backend.prefs import PrefsStore
 from backend.components.quant.indian_stocks import ALL_SCAN_STOCKS
 from backend.core.clock import SystemClock
 from backend.database import db
@@ -96,9 +98,9 @@ def start_background_run(coro, run_id: Optional[str] = None, runs: Optional[RunS
     return run_id
 
 
-async def build_feed(instruments, mode: str, poll_interval_seconds: float):
-    """Real Kite ticks when a broker session is connected, polled quotes
-    otherwise.
+async def build_feed(instruments, mode: str, poll_interval_seconds: float, user_id: str, credentials):
+    """Real Kite ticks when *this user's* broker session is connected, polled
+    quotes otherwise.
 
     Only intraday benefits: a ticker feed aggregates ticks into bars as they
     arrive, which is exactly what a 5-minute strategy wants and pointless for
@@ -106,15 +108,19 @@ async def build_feed(instruments, mode: str, poll_interval_seconds: float):
     available without a broker login.
     """
     if mode == "INTRADAY":
-        session = KiteSessionManager(settings.KITE_API_KEY, settings.KITE_API_SECRET, db.redis)
-        if await session.state() == KiteSessionState.ACTIVE:
-            access_token = await session.get_access_token()
-            tokens = [i.instrument_token for i in instruments]
-            logger.info("using live Kite ticks for %d instrument(s)", len(tokens))
-            return KiteTickerFeed(
-                lambda: KiteTicker(api_key=settings.KITE_API_KEY, access_token=access_token),
-                tokens, timeframe="5m", timeframe_seconds=300.0,
+        creds = await credentials.get(user_id, "kite")
+        if creds is not None:
+            session = KiteSessionManager(
+                creds.api_key, creds.api_secret, db.redis, user_id=user_id
             )
+            if await session.state() == KiteSessionState.ACTIVE:
+                access_token = await session.get_access_token()
+                tokens = [i.instrument_token for i in instruments]
+                logger.info("using live Kite ticks for %d instrument(s)", len(tokens))
+                return KiteTickerFeed(
+                    lambda: KiteTicker(api_key=creds.api_key, access_token=access_token),
+                    tokens, timeframe="5m", timeframe_seconds=300.0,
+                )
 
     return PollingLiveFeed(
         YFinanceProvider(), instruments, timeframe=_MODE_TIMEFRAME[mode],
@@ -140,11 +146,12 @@ async def stop_background_run(run_id: str) -> bool:
 # ---------------------------------------------------------------------------
 
 class StartRequest(BaseModel):
+    """Risk caps are deliberately absent: they come from the caller's stored
+    preferences, so a request cannot size itself past the limits the user
+    saved. The scheduled scan path already worked this way."""
     mode: Literal["INTRADAY", "LONGTERM"] = "LONGTERM"
     universe: Optional[list[str]] = None  # tradingsymbols; defaults to ALL_SCAN_STOCKS
     poll_interval_seconds: float = 60.0
-    account_size: float = 1_000_000.0
-    max_exposure: float = 1_000_000.0
 
 
 class StartResponse(BaseModel):
@@ -188,8 +195,15 @@ async def start_trading(
     if not strategies:
         raise HTTPException(status_code=400, detail=f"No strategies registered for mode {req.mode!r}")
 
+    prefs = await PrefsStore(db.db).get(user.id)
+    account_size = prefs["account_size"]
+    max_exposure = prefs["max_exposure"]
+
     run_id = str(uuid.uuid4())
-    feed = await build_feed(instruments, req.mode, req.poll_interval_seconds)
+    feed = await build_feed(
+        instruments, req.mode, req.poll_interval_seconds,
+        user_id=user.id, credentials=get_credential_store(),
+    )
     execution = SimulatedExecutionClient()
     portfolio = Portfolio()
     ledger = LedgerStore(db.db, user_id=user.id, run_id=run_id, on_change=publisher_for(user.id))
@@ -201,13 +215,16 @@ async def start_trading(
     coro = run(
         strategies=strategies, feed=feed, execution=execution, portfolio=portfolio,
         clock=SystemClock(), symbol_for_token=symbol_for_token, redis=db.redis,
-        account_size=req.account_size, max_exposure=req.max_exposure, ledger=ledger,
+        account_size=account_size, max_exposure=max_exposure, ledger=ledger,
         order_sink=sink,
     )
     await runs.create(
         run_id=run_id, user_id=user.id, mode=req.mode,
         universe=[i.tradingsymbol for i in instruments],
-        params=req.model_dump(exclude={"universe"}),
+        params={
+            **req.model_dump(exclude={"universe"}),
+            "account_size": account_size, "max_exposure": max_exposure,
+        },
     )
     start_background_run(coro, run_id=run_id, runs=runs)
     await hub.publish(user.id, "runs", "started", await runs.get(run_id))

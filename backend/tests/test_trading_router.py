@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mongomock_motor import AsyncMongoMockClient
 
+from backend.auth.broker_credentials import BrokerCredentials
 from backend.auth.dependency import get_current_user
 from backend.auth.models import User
 from backend.core.models import Fill, Position, Side
@@ -257,6 +258,17 @@ class _Session:
         return "kite-access-token"
 
 
+class _Credentials:
+    """Stands in for BrokerCredentialStore. `stored=None` is a user who has
+    never entered broker credentials, which must still be able to trade."""
+
+    def __init__(self, stored=BrokerCredentials(api_key="ak", api_secret="as")):
+        self._stored = stored
+
+    async def get(self, user_id, broker):
+        return self._stored
+
+
 @pytest.mark.asyncio
 async def test_intraday_uses_kite_ticks_when_the_broker_is_connected(monkeypatch):
     from backend.auth.kite_session import KiteSessionState
@@ -265,7 +277,9 @@ async def test_intraday_uses_kite_ticks_when_the_broker_is_connected(monkeypatch
     monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.ACTIVE))
     monkeypatch.setattr(trading, "db", _FakeDb)
 
-    feed = await trading.build_feed(_instruments(), "INTRADAY", 60.0)
+    feed = await trading.build_feed(
+        _instruments(), "INTRADAY", 60.0, user_id="alice", credentials=_Credentials(),
+    )
 
     assert isinstance(feed, KiteTickerFeed)
 
@@ -278,7 +292,24 @@ async def test_intraday_falls_back_to_polling_without_a_broker_session(monkeypat
     monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.NEEDS_LOGIN))
     monkeypatch.setattr(trading, "db", _FakeDb)
 
-    feed = await trading.build_feed(_instruments(), "INTRADAY", 60.0)
+    feed = await trading.build_feed(
+        _instruments(), "INTRADAY", 60.0, user_id="alice", credentials=_Credentials(),
+    )
+
+    assert isinstance(feed, PollingLiveFeed)
+
+
+@pytest.mark.asyncio
+async def test_intraday_polls_when_the_user_has_no_broker_credentials(monkeypatch):
+    """A user who has never connected a broker still gets a working feed --
+    it must not fall through to someone else's session."""
+    from backend.data.feeds.polling_live import PollingLiveFeed
+
+    monkeypatch.setattr(trading, "db", _FakeDb)
+
+    feed = await trading.build_feed(
+        _instruments(), "INTRADAY", 60.0, user_id="alice", credentials=_Credentials(stored=None),
+    )
 
     assert isinstance(feed, PollingLiveFeed)
 
@@ -293,7 +324,9 @@ async def test_longterm_never_uses_the_tick_feed(monkeypatch):
     monkeypatch.setattr(trading, "KiteSessionManager", lambda *a, **kw: _Session(KiteSessionState.ACTIVE))
     monkeypatch.setattr(trading, "db", _FakeDb)
 
-    feed = await trading.build_feed(_instruments(), "LONGTERM", 60.0)
+    feed = await trading.build_feed(
+        _instruments(), "LONGTERM", 60.0, user_id="alice", credentials=_Credentials(),
+    )
 
     assert isinstance(feed, PollingLiveFeed)
 
