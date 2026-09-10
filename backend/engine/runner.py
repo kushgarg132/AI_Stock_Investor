@@ -149,6 +149,7 @@ async def size_intents(
             order_type="MARKET",
             limit_price=None,
             product=product,
+            strategy_name=owning_strategy.spec.name if owning_strategy is not None else None,
         )
 
         if order_sink is not None:

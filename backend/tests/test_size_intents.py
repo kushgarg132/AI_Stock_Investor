@@ -31,8 +31,8 @@ class _FakeCtx:
 
 
 class _FakeStrategy:
-    def __init__(self, mode: str) -> None:
-        self.spec = SimpleNamespace(mode=mode)
+    def __init__(self, mode: str, name: str = "fake") -> None:
+        self.spec = SimpleNamespace(mode=mode, name=name)
 
 
 def _no_sentiment_redis():
@@ -201,3 +201,25 @@ async def test_a_tripped_kill_switch_does_not_block_longterm_suggestions():
         account_size=1_000_000.0, max_exposure=1_000_000.0, kill_switch_tripped=True,
     )
     assert len(orders) == 1
+
+
+@pytest.mark.asyncio
+async def test_order_carries_the_owning_strategys_name():
+    intent = Intent(
+        symbol="RELIANCE", side=Side.BUY, strength=1.0,
+        reason_codes=["signal"], stop_hint=90.0,
+    )
+    ctx = _FakeCtx({"RELIANCE": 100.0})
+    strategy = _FakeStrategy(mode="INTRADAY", name="volume_surge")
+    orders = await size_intents(
+        [intent], Portfolio(), ctx, {"RELIANCE": strategy}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0,
+    )
+    assert len(orders) == 1
+    assert orders[0].strategy_name == "volume_surge"
+
+
+def test_order_strategy_name_defaults_to_none():
+    from backend.core.models import Order, Side
+    order = Order(id="x", symbol="RELIANCE", side=Side.BUY, quantity=1.0, order_type="MARKET")
+    assert order.strategy_name is None

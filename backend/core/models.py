@@ -85,6 +85,12 @@ class Order(BaseModel):
     # strategy's forced square-off order always is; size_intents (Task 6)
     # sets it explicitly per order from the owning strategy's spec.mode.
     product: Literal["CNC", "MIS"] = "MIS"
+    # Which strategy emitted this order -- None means "not attributable to
+    # a live-eligible strategy", which is also the correct default: an
+    # order with no strategy_name can never be routed live by
+    # RoutingExecutionClient (backend/engine/execution/routing.py), only
+    # to paper. Set by size_intents from owner_by_symbol.
+    strategy_name: Optional[str] = None
 
 
 class Fill(BaseModel):
@@ -109,3 +115,23 @@ class Position(BaseModel):
     avg_price: float = 0.0
     realized_pnl: float = 0.0
     unrealized_pnl: float = 0.0
+
+
+LiveOrderState = Literal[
+    "SUBMITTED", "ACKNOWLEDGED", "PARTIALLY_FILLED", "FILLED", "REJECTED", "CANCELLED",
+]
+
+
+class BrokerOrderStatus(BaseModel):
+    """A broker's own order-status response, normalized to this app's
+    LiveOrderState by whichever BrokerAdapter fetched it -- Kite/Upstox/
+    Angel One all use different status strings natively (see each
+    adapter's docstring for the mapping); nothing outside the adapter
+    layer should ever see a broker-native status string."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    broker_order_id: str
+    status: LiveOrderState
+    filled_quantity: float
+    average_price: float
