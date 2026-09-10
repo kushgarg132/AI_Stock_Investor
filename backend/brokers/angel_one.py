@@ -28,6 +28,22 @@ Real API surface used (root https://apiconnect.angelone.in):
   body {"exchange", "symboltoken", "interval", "fromdate", "todate"} (dates
   "YYYY-MM-DD HH:MM") -> {"data": [[iso_timestamp, o, h, l, c, volume], ...]}.
   Interval is a documented enum; only ONE_MINUTE/ONE_DAY are verified here.
+- Place:   POST /rest/secure/angelbroking/order/v1/placeOrder
+  body {"variety", "tradingsymbol", "symboltoken", "transactiontype",
+  "exchange", "ordertype", "producttype", "duration", "price", "squareoff",
+  "stoploss", "quantity"} -> {"status": true, "data": {"orderid": "..."}}.
+- Cancel:  POST /rest/secure/angelbroking/order/v1/cancelOrder
+  body {"variety": "NORMAL", "orderid": ...} -> {"status": true}.
+- Order Book: GET /rest/secure/angelbroking/order/v1/getOrderBook ->
+  {"status": true, "data": [{"orderid", "status", "filledshares",
+  "averageprice", ...}]}. NOTE: The SDK source and README do not document
+  exact `status` string casing/values for this endpoint (unlike Kite/Upstox,
+  whose docs list them explicitly) -- _map_status matches defensively by
+  substring, never raises on an unrecognized value, and defaults to
+  ACKNOWLEDGED rather than guessing FILLED.
+- Positions: GET /rest/secure/angelbroking/order/v1/getPosition ->
+  {"status": true, "data": [{"tradingsymbol", "netqty", "avgnetprice",
+  "pnl", ...}]}.
 - Every authenticated call needs: Authorization: Bearer {jwtToken},
   X-PrivateKey: {api key}, X-UserType: USER, X-SourceID: WEB,
   Content-type: application/json (the SDK also sends X-ClientLocalIP/
@@ -50,6 +66,7 @@ import httpx
 from backend.brokers.expiry import next_fixed_time_ist
 from backend.brokers.protocol import BrokerSessionState
 from backend.components.shared.models import PriceCandle
+from backend.core.models import BrokerOrderStatus, Order, Position
 from backend.instruments.models import Instrument
 
 _ROOT = "https://apiconnect.angelone.in"
@@ -57,9 +74,14 @@ _LOGIN_URL = f"{_ROOT}/rest/auth/angelbroking/user/v1/loginByPassword"
 _QUOTE_URL = f"{_ROOT}/rest/secure/angelbroking/market/v1/quote"
 _CANDLE_URL = f"{_ROOT}/rest/secure/angelbroking/historical/v1/getCandleData"
 _SCRIP_URL = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+_PLACE_ORDER_URL = f"{_ROOT}/rest/secure/angelbroking/order/v1/placeOrder"
+_CANCEL_ORDER_URL = f"{_ROOT}/rest/secure/angelbroking/order/v1/cancelOrder"
+_ORDER_BOOK_URL = f"{_ROOT}/rest/secure/angelbroking/order/v1/getOrderBook"
+_POSITIONS_URL = f"{_ROOT}/rest/secure/angelbroking/order/v1/getPosition"
 
 _INTERVAL_MAP = {"1m": "ONE_MINUTE", "1d": "ONE_DAY"}
 _PERIOD_DAYS = {"1d": 1, "5d": 5, "1mo": 30, "3mo": 90, "6mo": 182, "1y": 365, "2y": 730, "5y": 1825}
+_PRODUCT_MAP = {"MIS": "INTRADAY", "CNC": "DELIVERY"}
 
 
 class AngelOneAdapter:
@@ -200,6 +222,92 @@ class AngelOneAdapter:
             )
             for c in candles
         ]
+
+    @staticmethod
+    def _map_status(raw_status: str) -> str:
+        status = raw_status.lower()
+        if "complete" in status:
+            return "FILLED"
+        if "reject" in status:
+            return "REJECTED"
+        if "cancel" in status:
+            return "CANCELLED"
+        return "ACKNOWLEDGED"
+
+    async def place_order(self, order: Order) -> str:
+        row = await self._resolve(Instrument(
+            exchange="NSE", tradingsymbol=order.symbol, name=order.symbol,
+            instrument_token=0, exchange_token=0, instrument_type="EQ",
+            segment="NSE", lot_size=1, tick_size=0.05,
+        ))
+        token = await self.get_access_token()
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(_PLACE_ORDER_URL, json={
+                "variety": "NORMAL",
+                "tradingsymbol": order.symbol,
+                "symboltoken": row["token"],
+                "transactiontype": order.side.value,
+                "exchange": "NSE",
+                "ordertype": "MARKET",
+                "producttype": _PRODUCT_MAP[order.product],
+                "duration": "DAY",
+                "price": "0",
+                "squareoff": "0",
+                "stoploss": "0",
+                "quantity": str(int(order.quantity)),
+            }, headers=self._headers(token))
+            resp.raise_for_status()
+
+        body = resp.json()
+        if not body.get("status"):
+            raise RuntimeError(f"Angel One rejected the order: {body.get('message', 'unknown error')}")
+        return body["data"]["orderid"]
+
+    async def cancel_order(self, broker_order_id: str) -> None:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                _CANCEL_ORDER_URL, json={"variety": "NORMAL", "orderid": broker_order_id},
+                headers=self._headers(token),
+            )
+            resp.raise_for_status()
+
+    async def get_order_status(self, broker_order_id: str) -> BrokerOrderStatus:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(_ORDER_BOOK_URL, headers=self._headers(token))
+            resp.raise_for_status()
+
+        rows = resp.json().get("data") or []
+        row = next((r for r in rows if r["orderid"] == broker_order_id), None)
+        if row is None:
+            raise ValueError(f"Order {broker_order_id!r} not found in Angel One's order book")
+
+        return BrokerOrderStatus(
+            broker_order_id=broker_order_id,
+            status=self._map_status(row["status"]),
+            filled_quantity=float(row.get("filledshares", 0) or 0),
+            average_price=float(row.get("averageprice", 0) or 0),
+        )
+
+    async def get_positions(self) -> dict[str, Position]:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(_POSITIONS_URL, headers=self._headers(token))
+            resp.raise_for_status()
+
+        result = {}
+        for row in resp.json().get("data") or []:
+            symbol = row["tradingsymbol"]
+            plain = symbol[:-3] if symbol.endswith("-EQ") else symbol
+            result[plain] = Position(
+                symbol=plain,
+                quantity=float(row.get("netqty", 0) or 0),
+                avg_price=float(row.get("avgnetprice", 0) or 0),
+                unrealized_pnl=float(row.get("pnl", 0) or 0),
+            )
+        return result
 
     async def instruments(self, exchanges: tuple[str, ...] = ("NSE",)) -> list[Instrument]:
         scrip = await self._load_scrip()

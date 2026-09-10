@@ -204,3 +204,95 @@ async def test_disconnect_clears_the_cached_token():
     await adapter.disconnect()
 
     assert await adapter.get_access_token() is None
+
+
+async def test_place_order_posts_mapped_fields(monkeypatch):
+    from backend.core.models import Order, Side
+
+    adapter = _adapter()
+    captured = {}
+
+    async def fake_post(self, url, json=None, headers=None, **kwargs):
+        if "placeOrder" in url:
+            captured["url"], captured["json"] = url, json
+            return httpx.Response(200, json={"status": True, "data": {"orderid": "ao-order-1"}}, request=httpx.Request("POST", url))
+        return httpx.Response(200, json={"status": True, "data": {"jwtToken": "tok", "refreshToken": "r", "feedToken": "f"}}, request=httpx.Request("POST", url))
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json=_SCRIP, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    order = Order(id="app-1", symbol="RELIANCE", side=Side.BUY, quantity=10.0, order_type="MARKET", product="MIS")
+    broker_order_id = await adapter.place_order(order)
+
+    assert broker_order_id == "ao-order-1"
+    assert "placeOrder" in captured["url"]
+    assert captured["json"]["transactiontype"] == "BUY"
+    assert captured["json"]["producttype"] == "INTRADAY"
+    assert captured["json"]["quantity"] == "10"
+
+
+async def test_cancel_order_posts_variety_and_orderid(monkeypatch):
+    adapter = _adapter()
+    captured = {}
+
+    async def fake_post(self, url, json=None, headers=None, **kwargs):
+        captured["url"], captured["json"] = url, json
+        return httpx.Response(200, json={"status": True, "data": {}}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    await adapter.cancel_order("ao-order-1")
+
+    assert "cancelOrder" in captured["url"]
+    assert captured["json"] == {"variety": "NORMAL", "orderid": "ao-order-1"}
+
+
+async def test_get_order_status_maps_complete_to_filled(monkeypatch):
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"status": True, "data": [
+            {"orderid": "ao-order-1", "status": "complete", "filledshares": "10", "averageprice": "2500.5"},
+        ]}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    status = await adapter.get_order_status("ao-order-1")
+
+    assert status.status == "FILLED"
+    assert status.filled_quantity == 10
+    assert status.average_price == 2500.5
+
+
+async def test_get_order_status_unrecognized_value_defaults_acknowledged(monkeypatch):
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"status": True, "data": [
+            {"orderid": "ao-order-1", "status": "some-new-status", "filledshares": "0", "averageprice": "0"},
+        ]}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    status = await adapter.get_order_status("ao-order-1")
+
+    assert status.status == "ACKNOWLEDGED"
+
+
+async def test_get_positions_maps_netqty(monkeypatch):
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"status": True, "data": [
+            {"tradingsymbol": "RELIANCE-EQ", "netqty": "10", "avgnetprice": "2500.0", "pnl": "150.0"},
+        ]}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    positions = await adapter.get_positions()
+
+    assert positions["RELIANCE"].quantity == 10
+    assert positions["RELIANCE"].unrealized_pnl == 150.0
