@@ -211,3 +211,109 @@ async def test_disconnect_clears_the_cached_token():
     await adapter.disconnect()
 
     assert await adapter.get_access_token() is None
+
+
+def _scrip():
+    return [{
+        "segment": "NSE_EQ", "exchange": "NSE", "isin": "INE002A01018",
+        "instrument_type": "EQ", "instrument_key": "NSE_EQ|INE002A01018",
+        "lot_size": 1, "exchange_token": "2885", "tick_size": 0.05,
+        "trading_symbol": "RELIANCE", "name": "RELIANCE INDUSTRIES",
+    }]
+
+
+async def test_place_order_posts_mapped_fields(monkeypatch):
+    from backend.core.models import Order, Side
+
+    redis = _redis()
+    await redis.set("broker:alice:upstox:access_token", "up-tok")
+    adapter = _adapter(redis)
+
+    captured = {}
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(
+            200, content=gzip.compress(json.dumps(_scrip()).encode()), request=httpx.Request("GET", url),
+        )
+
+    async def fake_post(self, url, json=None, headers=None, **kwargs):
+        captured["url"], captured["json"] = url, json
+        return httpx.Response(200, json={"status": "success", "data": {"order_id": "up-order-1"}}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+    monkeypatch.setattr(httpx.AsyncClient, "post", fake_post)
+
+    order = Order(id="app-1", symbol="RELIANCE", side=Side.BUY, quantity=10.0, order_type="MARKET", product="MIS")
+    broker_order_id = await adapter.place_order(order)
+
+    assert broker_order_id == "up-order-1"
+    assert captured["url"] == "https://api-hft.upstox.com/v2/order/place"
+    assert captured["json"]["quantity"] == 10
+    assert captured["json"]["product"] == "I"
+    assert captured["json"]["transaction_type"] == "BUY"
+    assert captured["json"]["order_type"] == "MARKET"
+    assert captured["json"]["instrument_token"] == "NSE_EQ|INE002A01018"
+
+
+async def test_cancel_order_sends_delete_with_order_id(monkeypatch):
+    adapter = _adapter()
+    captured = {}
+
+    async def fake_delete(self, url, headers=None, **kwargs):
+        captured["url"] = url
+        return httpx.Response(200, json={"status": "success", "data": {"order_id": "up-order-1"}}, request=httpx.Request("DELETE", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "delete", fake_delete)
+
+    await adapter.cancel_order("up-order-1")
+
+    assert captured["url"] == "https://api-hft.upstox.com/v2/order/cancel?order_id=up-order-1"
+
+
+async def test_get_order_status_maps_complete_to_filled(monkeypatch):
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"data": {
+            "order_id": "up-order-1", "status": "complete", "filled_quantity": 10, "average_price": 2500.5,
+        }}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    status = await adapter.get_order_status("up-order-1")
+
+    assert status.status == "FILLED"
+    assert status.filled_quantity == 10
+    assert status.average_price == 2500.5
+
+
+async def test_get_order_status_maps_rejected(monkeypatch):
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"data": {
+            "order_id": "up-order-1", "status": "rejected", "filled_quantity": 0, "average_price": 0.0,
+        }}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    status = await adapter.get_order_status("up-order-1")
+
+    assert status.status == "REJECTED"
+
+
+async def test_get_positions_maps_trading_symbol(monkeypatch):
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"data": [{
+            "trading_symbol": "RELIANCE", "quantity": 10, "average_price": 2500.0,
+            "unrealised": 150.0, "realised": 0.0,
+        }]}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    positions = await adapter.get_positions()
+
+    assert positions["RELIANCE"].quantity == 10
+    assert positions["RELIANCE"].unrealized_pnl == 150.0

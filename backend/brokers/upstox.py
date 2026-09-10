@@ -27,6 +27,17 @@ Real API surface used:
   refreshed daily, each row carrying instrument_key (the real query key --
   segment|ISIN, NOT the numeric exchange_token), trading_symbol,
   exchange_token, lot_size, tick_size.
+- Place Order: POST https://api-hft.upstox.com/v2/order/place, Bearer auth,
+  JSON body with quantity, product (I/D), order_type, transaction_type (BUY/SELL),
+  validity, price, instrument_token, trigger_price, disclosed_quantity ->
+  {"status": "success", "data": {"order_id": "..."}}.
+- Cancel Order: DELETE https://api-hft.upstox.com/v2/order/cancel?order_id={order_id},
+  Bearer auth -> {"status": "success", "data": {"order_id": "..."}}.
+- Order Status: GET https://api.upstox.com/v2/order/details?order_id={order_id},
+  Bearer auth -> {"data": {"status": "...", "filled_quantity": ..., "average_price": ...}}.
+- Positions:   GET https://api.upstox.com/v2/portfolio/short-term-positions,
+  Bearer auth -> {"data": [{"trading_symbol": "...", "quantity": ...,
+  "average_price": ..., "unrealised": ..., "realised": ...}]}.
 
 Because instrument_key (Upstox's actual query key) isn't ISIN data the
 shared Instrument model carries from other brokers' sources, quote()/
@@ -46,6 +57,7 @@ import httpx
 from backend.brokers.expiry import ttl_seconds_until
 from backend.brokers.protocol import BrokerSessionState
 from backend.components.shared.models import PriceCandle
+from backend.core.models import BrokerOrderStatus, Order, Position
 from backend.instruments.models import Instrument
 
 _AUTHORIZE_URL = "https://api.upstox.com/v2/login/authorization/dialog"
@@ -53,9 +65,14 @@ _TOKEN_URL = "https://api.upstox.com/v2/login/authorization/token"
 _QUOTE_URL = "https://api.upstox.com/v2/market-quote/quotes"
 _HISTORY_URL = "https://api.upstox.com/v2/historical-candle/{key}/{interval}/{to_date}/{from_date}"
 _SCRIP_URL = "https://assets.upstox.com/market-quote/instruments/exchange/{exchange}.json.gz"
+_PLACE_ORDER_URL = "https://api-hft.upstox.com/v2/order/place"
+_CANCEL_ORDER_URL = "https://api-hft.upstox.com/v2/order/cancel"
+_ORDER_DETAILS_URL = "https://api.upstox.com/v2/order/details"
+_POSITIONS_URL = "https://api.upstox.com/v2/portfolio/short-term-positions"
 
 _INTERVAL_MAP = {"1m": "1minute", "30m": "30minute", "1d": "day"}
 _PERIOD_DAYS = {"1d": 1, "5d": 5, "1mo": 30, "3mo": 90, "6mo": 182, "1y": 365, "2y": 730, "5y": 1825}
+_PRODUCT_MAP = {"MIS": "I", "CNC": "D"}
 
 
 class UpstoxAdapter:
@@ -206,3 +223,79 @@ class UpstoxAdapter:
         # binary protocol is out of scope for this pass -- callers fall back
         # to polling, exactly as when no broker is connected at all.
         return None
+
+    @staticmethod
+    def _map_status(raw_status: str) -> str:
+        status = raw_status.lower()
+        if status == "complete":
+            return "FILLED"
+        if status == "rejected":
+            return "REJECTED"
+        if status == "cancelled":
+            return "CANCELLED"
+        return "ACKNOWLEDGED"
+
+    async def place_order(self, order: Order) -> str:
+        row = await self._resolve(Instrument(
+            exchange="NSE", tradingsymbol=order.symbol, name=order.symbol,
+            instrument_token=0, exchange_token=0, instrument_type="EQ",
+            segment="NSE_EQ", lot_size=1, tick_size=0.05,
+        ))
+        token = await self.get_access_token()
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(_PLACE_ORDER_URL, json={
+                "quantity": int(order.quantity),
+                "product": _PRODUCT_MAP[order.product],
+                "order_type": order.order_type,
+                "transaction_type": order.side.value,
+                "validity": "DAY",
+                "price": 0,
+                "instrument_token": row["instrument_key"],
+                "trigger_price": 0,
+                "disclosed_quantity": 0,
+            }, headers=self._headers(token))
+            resp.raise_for_status()
+
+        return resp.json()["data"]["order_id"]
+
+    async def cancel_order(self, broker_order_id: str) -> None:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.delete(
+                f"{_CANCEL_ORDER_URL}?order_id={broker_order_id}", headers=self._headers(token),
+            )
+            resp.raise_for_status()
+
+    async def get_order_status(self, broker_order_id: str) -> BrokerOrderStatus:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                _ORDER_DETAILS_URL, params={"order_id": broker_order_id}, headers=self._headers(token),
+            )
+            resp.raise_for_status()
+
+        data = resp.json()["data"]
+        return BrokerOrderStatus(
+            broker_order_id=broker_order_id,
+            status=self._map_status(data["status"]),
+            filled_quantity=float(data.get("filled_quantity", 0)),
+            average_price=float(data.get("average_price", 0.0)),
+        )
+
+    async def get_positions(self) -> dict[str, Position]:
+        token = await self.get_access_token()
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(_POSITIONS_URL, headers=self._headers(token))
+            resp.raise_for_status()
+
+        return {
+            row["trading_symbol"]: Position(
+                symbol=row["trading_symbol"],
+                quantity=float(row["quantity"]),
+                avg_price=float(row["average_price"]),
+                realized_pnl=float(row.get("realised", 0.0)),
+                unrealized_pnl=float(row.get("unrealised", 0.0)),
+            )
+            for row in resp.json()["data"]
+        }
