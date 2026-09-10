@@ -48,6 +48,7 @@ class PreferencesPatch(BaseModel):
     daily_loss_limit: Optional[float] = None
     scan_enabled: Optional[bool] = None
     omniroute_model: Optional[str] = None
+    live_strategies: Optional[list[str]] = None
 
 
 @router.get("/settings/preferences")

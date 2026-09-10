@@ -11,6 +11,7 @@ from backend.app_settings import AppSettingsStore
 from backend.auth.broker_credentials import BrokerCredentialStore
 from backend.auth.dependency import get_current_user
 from backend.auth.models import User
+from backend.prefs import PrefsStore
 from backend.routers import settings as settings_router
 
 
@@ -39,6 +40,9 @@ def _client(db, user=_USER):
     )
     app.dependency_overrides[settings_router.get_app_settings_store] = (
         lambda: AppSettingsStore(db)
+    )
+    app.dependency_overrides[settings_router.get_prefs_store] = (
+        lambda: PrefsStore(db)
     )
     return TestClient(app)
 
@@ -219,3 +223,17 @@ def test_deleting_broker_credentials_disconnects_only_the_caller(db):
     assert _client(db, user=_user("bob")).get(
         "/api/v1/settings/broker-credentials?broker=kite"
     ).json()["configured"] is True
+
+
+def test_live_strategies_defaults_to_empty(client):
+    resp = client.get("/api/v1/settings/preferences")
+    assert resp.status_code == 200
+    assert resp.json()["live_strategies"] == []
+
+
+def test_live_strategies_can_be_updated(client):
+    resp = client.put(
+        "/api/v1/settings/preferences", json={"live_strategies": ["volume_surge"]},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["live_strategies"] == ["volume_surge"]

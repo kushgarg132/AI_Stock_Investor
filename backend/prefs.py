@@ -19,6 +19,7 @@ DEFAULTS = {
     "daily_loss_limit": 50_000.0,  # kill-switch trigger: cumulative loss for the day
     "scan_enabled": True,
     "omniroute_model": None,
+    "live_strategies": [],  # strategy names the user has toggled to trade with real orders
 }
 
 EDITABLE = tuple(DEFAULTS)
