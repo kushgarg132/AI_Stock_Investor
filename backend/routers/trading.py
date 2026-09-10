@@ -36,6 +36,9 @@ from backend.database import db
 from backend.data.providers.yfinance_provider import YFinanceProvider
 from backend.engine.session import IST
 from backend.data.feeds.polling_live import PollingLiveFeed
+from backend.engine.execution.broker import BrokerExecutionClient
+from backend.engine.execution.live_order_store import LiveOrderStore
+from backend.engine.execution.routing import RoutingExecutionClient
 from backend.engine.execution.simulated import SimulatedExecutionClient
 from backend.engine.persistence import LedgerStore
 from backend.ws.hub import hub
@@ -141,6 +144,19 @@ async def build_feed(instruments, mode: str, poll_interval_seconds: float, user_
     )
 
 
+async def get_active_broker_adapter(user_id: str, credentials):
+    """First broker (BROKERS order) with an ACTIVE session for this user, or
+    None. Mirrors build_feed's own loop above -- same order, same ACTIVE
+    check -- but returns the adapter itself rather than a feed, since live
+    order routing needs to place/cancel orders and read positions, not just
+    stream ticks."""
+    for broker in BROKERS:
+        adapter = await get_broker_adapter(broker, user_id, credentials, db.redis)
+        if await adapter.state() == BrokerSessionState.ACTIVE:
+            return adapter
+    return None
+
+
 async def stop_background_run(run_id: str) -> bool:
     task = _RUNS.get(run_id)
     if task is None:
@@ -181,12 +197,6 @@ async def start_trading(
     user: User = Depends(get_current_user),
     runs: RunStore = Depends(get_run_store),
 ):
-    if settings.TRADING_LIVE_ENABLED:
-        raise HTTPException(
-            status_code=501,
-            detail="Live order routing is not implemented; unset TRADING_LIVE_ENABLED to paper trade",
-        )
-
     master = InstrumentMaster(db.db)
     symbols = req.universe or list(ALL_SCAN_STOCKS)
 
@@ -217,13 +227,36 @@ async def start_trading(
     account_size = prefs["account_size"]
     max_exposure = prefs["max_exposure"]
 
+    credentials = get_credential_store()
+    active_adapter = await get_active_broker_adapter(user.id, credentials)
+    live_strategy_names = set(prefs["live_strategies"])
+    eligible_names = {s.spec.name for s in strategies}
+
+    # A strategy routes live only if ALL of: the user toggled it live, this
+    # broker session is ACTIVE, and it cleared the backtest gate above.
+    # Anything uncertain (no active session, not toggled, not eligible)
+    # falls back to paper -- never the other way around.
+    live_by_strategy: dict[str, BrokerExecutionClient] = {}
+    if active_adapter is not None:
+        live_order_store = LiveOrderStore(db.db)
+        for name in live_strategy_names & eligible_names:
+            live_by_strategy[name] = BrokerExecutionClient(active_adapter, live_order_store, user_id=user.id)
+
     run_id = str(uuid.uuid4())
     feed = await build_feed(
         instruments, req.mode, req.poll_interval_seconds,
-        user_id=user.id, credentials=get_credential_store(),
+        user_id=user.id, credentials=credentials,
     )
-    execution = SimulatedExecutionClient()
+    paper_execution = SimulatedExecutionClient()
+    execution = (
+        RoutingExecutionClient(paper=paper_execution, live_by_strategy=live_by_strategy)
+        if live_by_strategy else paper_execution
+    )
     portfolio = Portfolio()
+    if active_adapter is not None and live_by_strategy:
+        broker_positions = await active_adapter.get_positions()
+        for symbol, position in broker_positions.items():
+            portfolio.positions[symbol] = position
     ledger = LedgerStore(db.db, user_id=user.id, run_id=run_id, on_change=publisher_for(user.id))
 
     # INTRADAY orders execute themselves; LONGTERM ones stop at a PENDING

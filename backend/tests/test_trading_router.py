@@ -225,10 +225,23 @@ async def _seed_passing_backtest(strategy_name: str) -> None:
     ))
 
 
+def _no_active_broker_session(monkeypatch):
+    """Stubs the registry lookup /trading/start now makes on every call (not
+    just INTRADAY) to decide live routing, so tests that don't care about
+    broker state don't hit the real (unconnected-in-tests) credential store."""
+    from backend.brokers.protocol import BrokerSessionState
+
+    monkeypatch.setattr(
+        trading, "get_broker_adapter",
+        AsyncMock(return_value=_FakeAdapter(BrokerSessionState.NEEDS_LOGIN)),
+    )
+
+
 def test_start_then_stop_round_trip(monkeypatch):
     monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
     monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
     monkeypatch.setattr(trading, "db", _FakeDb)
+    _no_active_broker_session(monkeypatch)
     for name in ("technical_breakout", "mean_reversion", "macd_crossover"):
         asyncio.run(_seed_passing_backtest(name))
 
@@ -416,17 +429,176 @@ async def test_live_eligible_strategies_keeps_only_the_ones_that_passed():
     assert [s.spec.name for s in eligible] == ["technical_breakout"]
 
 
-def test_start_refuses_when_live_trading_is_switched_on(monkeypatch):
-    """The flag promises real orders; nothing implements them, so refusing is
-    the only honest answer."""
-    monkeypatch.setattr(trading.settings, "TRADING_LIVE_ENABLED", True)
-
+def _start_app(fake_db=_FakeDb):
+    """Same wiring test_start_then_stop_round_trip uses, factored out for the
+    live-routing tests below."""
     app = FastAPI()
     app.include_router(trading.router, prefix="/api/v1")
     app.dependency_overrides[get_current_user] = lambda: _USER
-    app.dependency_overrides[trading.get_run_store] = lambda: RunStore(_FakeDb.db)
+    app.dependency_overrides[trading.get_run_store] = lambda: RunStore(fake_db.db)
+    return app
 
-    with TestClient(app) as test_client:
-        resp = test_client.post("/api/v1/trading/start", json={"mode": "LONGTERM"})
 
-    assert resp.status_code == 501
+def test_start_trading_still_works_with_no_live_strategies_toggled(monkeypatch):
+    """Default behavior (empty live_strategies, Task 10's default): every
+    strategy runs paper, same as before this feature existed."""
+    monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
+    monkeypatch.setattr(trading, "db", _FakeDb)
+    _no_active_broker_session(monkeypatch)
+    for name in ("technical_breakout", "mean_reversion", "macd_crossover"):
+        asyncio.run(_seed_passing_backtest(name))
+
+    with TestClient(_start_app()) as test_client:
+        resp = test_client.post("/api/v1/trading/start", json={
+            "mode": "LONGTERM", "universe": ["RELIANCE"], "poll_interval_seconds": 0.01,
+        })
+        assert resp.status_code == 200
+        run_id = resp.json()["run_id"]
+
+        stop_resp = test_client.post("/api/v1/trading/stop", json={"run_id": run_id})
+        assert stop_resp.json()["stopped"] is True
+
+
+def test_start_trading_no_longer_501s_on_trading_live_enabled(monkeypatch):
+    """TRADING_LIVE_ENABLED is gone; even if some stale config still sets an
+    attribute by that name, /trading/start must not treat it specially.
+
+    settings is a pydantic BaseSettings instance -- plain monkeypatch.setattr
+    (even with raising=False) refuses to set a field the model no longer
+    declares, which is itself half the proof the flag is gone. object.__setattr__
+    bypasses pydantic's own __setattr__ to simulate a stray leftover value
+    (e.g. an old env var) actually landing on the instance."""
+    monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
+    monkeypatch.setattr(trading, "db", _FakeDb)
+    _no_active_broker_session(monkeypatch)
+    object.__setattr__(trading.settings, "TRADING_LIVE_ENABLED", True)
+    try:
+        for name in ("technical_breakout", "mean_reversion", "macd_crossover"):
+            asyncio.run(_seed_passing_backtest(name))
+
+        with TestClient(_start_app()) as test_client:
+            resp = test_client.post("/api/v1/trading/start", json={
+                "mode": "LONGTERM", "universe": ["RELIANCE"], "poll_interval_seconds": 0.01,
+            })
+            assert resp.status_code != 501
+            run_id = resp.json()["run_id"]
+
+            stop_resp = test_client.post("/api/v1/trading/stop", json={"run_id": run_id})
+            assert stop_resp.json()["stopped"] is True
+    finally:
+        object.__delattr__(trading.settings, "TRADING_LIVE_ENABLED")
+
+
+class _LiveAdapter:
+    """Stands in for an ACTIVE broker adapter with an open position to
+    reconcile -- state()/get_positions() are all /trading/start touches on
+    the adapter directly (order placement goes through BrokerExecutionClient,
+    not exercised by this route test)."""
+
+    def __init__(self, state, positions=None):
+        self._state = state
+        self._positions = positions or {}
+
+    async def state(self):
+        return self._state
+
+    async def get_positions(self):
+        return self._positions
+
+
+def _fresh_fake_db():
+    """A per-test AsyncMongoMockClient, distinct from the module-level
+    _FakeDb, so PrefsStore writes here can't leak live_strategies into
+    other tests that reuse _FakeDb.db."""
+    return type("_Db", (), {"db": AsyncMongoMockClient()["test_db"], "redis": None})()
+
+
+async def _seed_gate_and_prefs(fake_db, live_strategies):
+    from backend.components.shared.models import BacktestResult
+    from backend.prefs import PrefsStore
+    from backend.risk.backtest_gate import BacktestGateStore
+
+    for name in ("technical_breakout", "mean_reversion", "macd_crossover"):
+        await BacktestGateStore(fake_db.db).record(name, BacktestResult(
+            symbol="RELIANCE", start_date=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            end_date=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            total_trades=40, win_rate=0.55, profit_factor=1.5, total_pnl=50_000.0,
+            max_drawdown=0.10, sharpe_ratio=1.2, trades=[],
+        ))
+    await PrefsStore(fake_db.db).update(_USER.id, {"live_strategies": live_strategies})
+
+
+def test_start_routes_a_toggled_live_strategy_and_reconciles_positions(monkeypatch):
+    """All three conditions hold (toggled live, broker ACTIVE, backtest-gate
+    eligible) -- the strategy must get a live BrokerExecutionClient and the
+    broker's open position must land in the fresh Portfolio.
+
+    Calls start_trading directly (not through TestClient/HTTP) so the whole
+    scenario runs on one asyncio event loop we control -- start_background_run
+    schedules run() as a task, and a no-await stub for it needs a couple of
+    `sleep(0)` turns on that *same* loop to actually execute before we assert
+    on what it was called with."""
+    from backend.brokers.protocol import BrokerSessionState
+    from backend.core.models import Position
+
+    fake_db = _fresh_fake_db()
+    monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
+    monkeypatch.setattr(trading, "db", fake_db)
+
+    broker_position = Position(symbol="RELIANCE", quantity=5.0, avg_price=2400.0)
+    monkeypatch.setattr(
+        trading, "get_active_broker_adapter",
+        AsyncMock(return_value=_LiveAdapter(BrokerSessionState.ACTIVE, {"RELIANCE": broker_position})),
+    )
+
+    seen = {}
+
+    async def _spying_run(**kwargs):
+        seen["portfolio"] = kwargs["portfolio"]
+        seen["execution"] = kwargs["execution"]
+
+    monkeypatch.setattr(trading, "run", _spying_run)
+
+    async def _scenario():
+        await _seed_gate_and_prefs(fake_db, ["technical_breakout"])
+        req = trading.StartRequest(mode="LONGTERM", universe=["RELIANCE"], poll_interval_seconds=0.01)
+        await trading.start_trading(req, user=_USER, runs=RunStore(fake_db.db))
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    asyncio.run(_scenario())
+
+    assert seen["portfolio"].positions["RELIANCE"].quantity == 5.0
+    assert isinstance(seen["execution"], trading.RoutingExecutionClient)
+    assert "technical_breakout" in seen["execution"]._live_by_strategy
+
+
+def test_start_falls_back_to_paper_when_broker_session_is_not_active(monkeypatch):
+    """Toggled live + backtest-gate eligible, but no ACTIVE broker session --
+    default-to-paper wins; no live_by_strategy entries, plain paper execution."""
+    fake_db = _fresh_fake_db()
+    monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
+    monkeypatch.setattr(trading, "db", fake_db)
+    monkeypatch.setattr(trading, "get_active_broker_adapter", AsyncMock(return_value=None))
+
+    seen = {}
+
+    async def _spying_run(**kwargs):
+        seen["execution"] = kwargs["execution"]
+
+    monkeypatch.setattr(trading, "run", _spying_run)
+
+    async def _scenario():
+        await _seed_gate_and_prefs(fake_db, ["technical_breakout"])
+        req = trading.StartRequest(mode="LONGTERM", universe=["RELIANCE"], poll_interval_seconds=0.01)
+        await trading.start_trading(req, user=_USER, runs=RunStore(fake_db.db))
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    asyncio.run(_scenario())
+
+    assert isinstance(seen["execution"], trading.SimulatedExecutionClient)
