@@ -19,6 +19,7 @@ from typing import Optional, Protocol
 
 from backend.auth.kite_session import KiteSessionState as BrokerSessionState
 from backend.components.shared.models import PriceCandle
+from backend.core.models import BrokerOrderStatus, Order, Position
 from backend.engine.protocols import DataFeed
 from backend.instruments.models import Instrument
 
@@ -59,4 +60,21 @@ class BrokerAdapter(Protocol):
         """None means this adapter has no live streaming support (or isn't
         ACTIVE), and the caller falls back to polling -- same as when no
         broker is connected at all."""
+        ...
+
+    async def place_order(self, order: Order) -> str:
+        """Places a real MARKET order at this broker. Returns the broker's
+        own order id (never this app's Order.id -- callers that need to
+        correlate the two use LiveOrderStore, backend/engine/execution/
+        live_order_store.py)."""
+        ...
+
+    async def cancel_order(self, broker_order_id: str) -> None: ...
+
+    async def get_order_status(self, broker_order_id: str) -> BrokerOrderStatus: ...
+
+    async def get_positions(self) -> dict[str, Position]:
+        """This broker's own current-day position book, keyed by
+        tradingsymbol -- the source of truth reconciliation
+        (backend/routers/trading.py) merges into the local Portfolio."""
         ...
