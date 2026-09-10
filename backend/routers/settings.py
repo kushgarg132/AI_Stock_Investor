@@ -68,6 +68,16 @@ async def update_preferences(
     return await prefs.update(user.id, patch.model_dump(exclude_none=True))
 
 
+@router.get("/settings/strategies")
+async def list_strategies():
+    """Plain strategy-name list for the Settings page's live/paper toggles --
+    universe is a placeholder since strategy construction needs one but the
+    name list doesn't depend on it."""
+    from backend.strategies.registry import build_default_strategies
+
+    return [s.spec.name for s in build_default_strategies(universe=["PLACEHOLDER"])]
+
+
 @router.get("/settings/omniroute-models")
 async def list_omniroute_models():
     """Proxies OmniRoute's OpenAI-compatible GET /models so the frontend can

@@ -237,3 +237,13 @@ def test_live_strategies_can_be_updated(client):
     )
     assert resp.status_code == 200
     assert resp.json()["live_strategies"] == ["volume_surge"]
+
+
+# --- strategy names, for the Settings live/paper toggles --------------------
+
+def test_list_strategies_returns_plain_name_list(client):
+    resp = client.get("/api/v1/settings/strategies")
+    assert resp.status_code == 200
+    names = resp.json()
+    assert isinstance(names, list)
+    assert "volume_surge" in names

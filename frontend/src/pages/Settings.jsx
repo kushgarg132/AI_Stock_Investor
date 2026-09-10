@@ -331,6 +331,7 @@ const MandateSheet = () => {
     daily_loss_limit: '',
   });
   const [saving, setSaving] = useState(false);
+  const [strategyNames, setStrategyNames] = useState([]);
 
   useEffect(() => {
     api
@@ -345,6 +346,13 @@ const MandateSheet = () => {
         });
       })
       .catch(() => setPrefs(null));
+  }, []);
+
+  useEffect(() => {
+    api
+      .get(endpoints.settings.strategies)
+      .then((res) => setStrategyNames(res.data))
+      .catch(() => setStrategyNames([]));
   }, []);
 
   const save = async (patch) => {
@@ -431,6 +439,33 @@ const MandateSheet = () => {
       <Row label="Scan universe" hint="Scrip the daily scan considers.">
         <span className="figure-md text-sm">{prefs.universe.length} scrip</span>
       </Row>
+
+      {strategyNames.map((name) => {
+        const isLive = (prefs.live_strategies || []).includes(name);
+        return (
+          <Row key={name} label={name} hint={isLive ? 'Trading with real orders.' : 'Paper only.'}>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isLive}
+              onClick={() => {
+                const next = isLive
+                  ? prefs.live_strategies.filter((n) => n !== name)
+                  : [...(prefs.live_strategies || []), name];
+                save({ live_strategies: next });
+              }}
+              className={cn(
+                'px-3 py-1 border font-[family-name:var(--font-narrow)] text-[0.6875rem] font-semibold uppercase tracking-[0.11em] transition-colors',
+                isLive
+                  ? 'bg-[var(--loss)] text-[var(--paper)] border-[var(--loss)]'
+                  : 'text-[var(--ink-soft)] border-[var(--rule-strong)]'
+              )}
+            >
+              {isLive ? 'Live' : 'Paper'}
+            </button>
+          </Row>
+        );
+      })}
 
       <p className="pt-3 doc-meta normal-case">
         Sizing risks up to 1% of {formatCurrency(prefs.account_size)} per trade at full
