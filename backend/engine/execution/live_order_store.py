@@ -32,7 +32,10 @@ class LiveOrderStore:
         return self._db["live_orders"]
 
     async def ensure_indexes(self) -> None:
-        await self.collection.create_index("user_id")
+        # Compound to match pending_for_user's actual query shape (user_id
+        # + status $in), same convention as runs.py's (user_id, status)
+        # index.
+        await self.collection.create_index([("user_id", 1), ("status", 1)])
 
     async def record_submitted(
         self, order_id: str, broker_order_id: str, user_id: str, strategy_name: str, symbol: str, side: Side,

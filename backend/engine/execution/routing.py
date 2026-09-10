@@ -38,7 +38,10 @@ class RoutingExecutionClient:
             await client.cancel(order_id)
 
     def positions(self) -> dict[str, Position]:
-        return self._paper.positions()
+        merged = dict(self._paper.positions())
+        for client in self._live_by_strategy.values():
+            merged.update(client.positions())
+        return merged
 
     async def fills(self) -> AsyncIterator[Fill]:
         async for fill in self._paper.fills():

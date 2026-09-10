@@ -92,6 +92,17 @@ class Order(BaseModel):
     # to paper. Set by size_intents from owner_by_symbol.
     strategy_name: Optional[str] = None
 
+    def whole_quantity(self) -> int:
+        """Equities trade in whole shares -- every broker adapter's
+        place_order needs an int, never a silently-truncated fraction.
+        size_intents already only ever produces whole-share quantities, so
+        this should never actually raise; it exists to make that assumption
+        visible instead of a fractional quantity quietly rounding down at
+        the broker call."""
+        if self.quantity != int(self.quantity):
+            raise ValueError(f"Order quantity must be a whole number of shares, got {self.quantity}")
+        return int(self.quantity)
+
 
 class Fill(BaseModel):
     model_config = ConfigDict(extra="forbid")

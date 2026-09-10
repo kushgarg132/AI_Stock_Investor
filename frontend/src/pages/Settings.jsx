@@ -450,7 +450,7 @@ const MandateSheet = () => {
               aria-checked={isLive}
               onClick={() => {
                 const next = isLive
-                  ? prefs.live_strategies.filter((n) => n !== name)
+                  ? (prefs.live_strategies || []).filter((n) => n !== name)
                   : [...(prefs.live_strategies || []), name];
                 save({ live_strategies: next });
               }}

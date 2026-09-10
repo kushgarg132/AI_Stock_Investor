@@ -41,7 +41,7 @@ class KiteOrderClient:
             exchange="NSE",
             tradingsymbol=order.symbol,
             transaction_type=order.side.value,
-            quantity=int(order.quantity),
+            quantity=order.whole_quantity(),
             product=order.product,
             order_type=order.order_type,
         )

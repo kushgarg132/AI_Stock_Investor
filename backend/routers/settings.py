@@ -69,7 +69,7 @@ async def update_preferences(
 
 
 @router.get("/settings/strategies")
-async def list_strategies():
+async def list_strategies(user: User = Depends(get_current_user)):
     """Plain strategy-name list for the Settings page's live/paper toggles --
     universe is a placeholder since strategy construction needs one but the
     name list doesn't depend on it."""

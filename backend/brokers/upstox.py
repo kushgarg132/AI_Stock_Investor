@@ -245,7 +245,7 @@ class UpstoxAdapter:
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.post(_PLACE_ORDER_URL, json={
-                "quantity": int(order.quantity),
+                "quantity": order.whole_quantity(),
                 "product": _PRODUCT_MAP[order.product],
                 "order_type": order.order_type,
                 "transaction_type": order.side.value,

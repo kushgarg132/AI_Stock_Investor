@@ -5,7 +5,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from backend.core.models import Intent, Side
+from backend.core.models import Intent, Order, Side
 
 
 def test_intent_rejects_empty_reason_codes():
@@ -30,3 +30,16 @@ def test_intent_is_frozen():
     intent = Intent(symbol="TEST", side=Side.SELL, strength=0.5, reason_codes=["r"])
     with pytest.raises(FrozenInstanceError):
         intent.strength = 0.9  # type: ignore[misc]
+
+
+def _order(quantity: float) -> Order:
+    return Order(id="x", symbol="RELIANCE", side=Side.BUY, quantity=quantity, order_type="MARKET")
+
+
+def test_whole_quantity_returns_int_for_a_whole_share_count():
+    assert _order(10.0).whole_quantity() == 10
+
+
+def test_whole_quantity_rejects_a_fractional_share_count():
+    with pytest.raises(ValueError):
+        _order(10.5).whole_quantity()

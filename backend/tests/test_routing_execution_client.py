@@ -5,7 +5,7 @@ all -- goes to paper. This is the single most safety-critical routing
 decision in the whole live-execution feature: default to paper on any
 doubt, proven explicitly below."""
 
-from backend.core.models import Fill, Order, Side
+from backend.core.models import Fill, Order, Position, Side
 from backend.engine.execution.routing import RoutingExecutionClient
 
 
@@ -16,6 +16,7 @@ class _FakeClient:
         self.on_bar_calls = 0
         self.poll_once_calls = 0
         self._fills: list[Fill] = []
+        self._positions: dict[str, Position] = {}
 
     async def submit(self, order: Order) -> str:
         self.submitted.append(order)
@@ -25,7 +26,7 @@ class _FakeClient:
         pass
 
     def positions(self) -> dict:
-        return {}
+        return self._positions
 
     async def fills(self):
         pending, self._fills = self._fills, []
@@ -106,3 +107,14 @@ async def test_fills_merges_both_sources():
     fills = [f async for f in router.fills()]
 
     assert {f.order_id for f in fills} == {"p1", "l1"}
+
+
+async def test_positions_merges_both_sources():
+    paper, live = _FakeClient("paper"), _FakeClient("live")
+    paper._positions = {"TCS": Position(symbol="TCS", quantity=1.0, avg_price=100.0)}
+    live._positions = {"RELIANCE": Position(symbol="RELIANCE", quantity=1.0, avg_price=2500.0)}
+    router = RoutingExecutionClient(paper=paper, live_by_strategy={"volume_surge": live})
+
+    positions = router.positions()
+
+    assert set(positions) == {"TCS", "RELIANCE"}

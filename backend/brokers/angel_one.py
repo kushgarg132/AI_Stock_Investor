@@ -255,7 +255,7 @@ class AngelOneAdapter:
                 "price": "0",
                 "squareoff": "0",
                 "stoploss": "0",
-                "quantity": str(int(order.quantity)),
+                "quantity": str(order.whole_quantity()),
             }, headers=self._headers(token))
             resp.raise_for_status()
 
