@@ -8,7 +8,9 @@ importing Kite-specific pieces directly.
 from typing import Optional
 
 from backend.auth.kite_session import KiteSessionManager, KiteSessionState
+from backend.brokers.kite_orders import KiteOrderClient
 from backend.components.shared.models import PriceCandle
+from backend.core.models import BrokerOrderStatus, Order, Position
 from backend.data.feeds.live_kite import KiteTickerFeed
 from backend.data.providers.kite_provider import KiteProvider
 from backend.instruments.kite_source import KiteInstrumentSource
@@ -65,3 +67,19 @@ class KiteAdapter:
             lambda: KiteTicker(api_key=self._api_key, access_token=token),
             instrument_tokens, timeframe=timeframe, timeframe_seconds=timeframe_seconds,
         )
+
+    async def place_order(self, order: Order) -> str:
+        token = await self.get_access_token()
+        return await KiteOrderClient(self._client_factory(token)).place_order(order)
+
+    async def cancel_order(self, broker_order_id: str) -> None:
+        token = await self.get_access_token()
+        await KiteOrderClient(self._client_factory(token)).cancel_order(broker_order_id)
+
+    async def get_order_status(self, broker_order_id: str) -> BrokerOrderStatus:
+        token = await self.get_access_token()
+        return await KiteOrderClient(self._client_factory(token)).get_order_status(broker_order_id)
+
+    async def get_positions(self) -> dict[str, Position]:
+        token = await self.get_access_token()
+        return await KiteOrderClient(self._client_factory(token)).get_positions()

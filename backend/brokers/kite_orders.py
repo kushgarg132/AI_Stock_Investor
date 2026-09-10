@@ -1,0 +1,86 @@
+"""Kite Connect order operations. Real pykiteconnect API surface used
+(verified against the installed SDK's place_order/cancel_order/
+order_history/positions signatures, and https://kite.trade/docs/connect/v3/
+orders/ + .../portfolio/, fetched live 2026-09-09):
+
+- `place_order(variety, exchange, tradingsymbol, transaction_type, quantity,
+  product, order_type, price=None, ...)` -> the SDK returns the order id
+  string directly (not the raw `{"data": {"order_id": ...}}` envelope).
+- `cancel_order(variety, order_id, parent_order_id=None)`.
+- `order_history(order_id)` -> list of dicts, one per state transition; the
+  last element is the current state. `status` values per Kite's docs:
+  COMPLETE, REJECTED, CANCELLED, OPEN, TRIGGER PENDING, OPEN PENDING,
+  VALIDATION PENDING, MODIFY PENDING, MODIFY VALIDATION PENDING, CANCEL
+  PENDING, AMO REQ RECEIVED, MODIFIED, PUT ORDER REQ RECEIVED -- anything
+  not COMPLETE/REJECTED/CANCELLED maps to PARTIALLY_FILLED (if
+  filled_quantity > 0) or ACKNOWLEDGED (a live account has never
+  exercised this mapping; verified against docs only, same posture as
+  every other broker adapter in this codebase).
+- `positions()` -> {"net": [...], "day": [...]} directly (SDK unwraps the
+  data envelope, same as KiteProvider.quote already relies on).
+
+Only MARKET orders are placed here -- LIMIT order price handling is out of
+scope (see docs/superpowers/specs/2026-09-09-live-equity-execution-design.md).
+"""
+
+import asyncio
+from typing import Callable
+
+from backend.core.models import BrokerOrderStatus, Order, Position, Side
+
+
+class KiteOrderClient:
+    def __init__(self, kite_client_factory: Callable[[], "KiteConnect"]) -> None:  # noqa: F821
+        self._kite_client_factory = kite_client_factory
+
+    async def place_order(self, order: Order) -> str:
+        kite = self._kite_client_factory()
+        return await asyncio.to_thread(
+            kite.place_order,
+            variety="regular",
+            exchange="NSE",
+            tradingsymbol=order.symbol,
+            transaction_type=order.side.value,
+            quantity=int(order.quantity),
+            product=order.product,
+            order_type=order.order_type,
+        )
+
+    async def cancel_order(self, broker_order_id: str) -> None:
+        kite = self._kite_client_factory()
+        await asyncio.to_thread(kite.cancel_order, variety="regular", order_id=broker_order_id)
+
+    @staticmethod
+    def _map_status(raw_status: str, filled_quantity: float) -> str:
+        if raw_status == "COMPLETE":
+            return "FILLED"
+        if raw_status == "REJECTED":
+            return "REJECTED"
+        if raw_status == "CANCELLED":
+            return "CANCELLED"
+        return "PARTIALLY_FILLED" if filled_quantity > 0 else "ACKNOWLEDGED"
+
+    async def get_order_status(self, broker_order_id: str) -> BrokerOrderStatus:
+        kite = self._kite_client_factory()
+        history = await asyncio.to_thread(kite.order_history, broker_order_id)
+        latest = history[-1]
+        return BrokerOrderStatus(
+            broker_order_id=broker_order_id,
+            status=self._map_status(latest["status"], latest["filled_quantity"]),
+            filled_quantity=float(latest["filled_quantity"]),
+            average_price=float(latest["average_price"]),
+        )
+
+    async def get_positions(self) -> dict[str, Position]:
+        kite = self._kite_client_factory()
+        data = await asyncio.to_thread(kite.positions)
+        return {
+            row["tradingsymbol"]: Position(
+                symbol=row["tradingsymbol"],
+                quantity=float(row["quantity"]),
+                avg_price=float(row["average_price"]),
+                realized_pnl=float(row.get("realised", 0.0)),
+                unrealized_pnl=float(row.get("unrealised", 0.0)),
+            )
+            for row in data["net"]
+        }
