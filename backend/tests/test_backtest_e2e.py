@@ -135,3 +135,34 @@ async def test_runner_fill_reflects_in_portfolio_position():
     pos = portfolio.positions[SYMBOL]
     assert pos.quantity == 850.0
     assert pos.avg_price == candles[0].close
+
+
+@pytest.mark.asyncio
+async def test_runner_calls_poll_once_on_an_execution_client_that_has_it():
+    """Reuses runner.run()'s existing per-bar loop as the status-poll
+    cadence for a live ExecutionClient -- no separate background task."""
+    instrument = _instrument()
+    candles = _candles(n=3)
+    provider = _FakeProvider(candles)
+    strategy = _FirstBarBuyStrategy(SYMBOL, TIMEFRAME)
+
+    feed = HistoricalFeed(provider, [instrument], candles[0].timestamp, candles[-1].timestamp, TIMEFRAME)
+
+    class _ExecutionWithPoll(SimulatedExecutionClient):
+        def __init__(self):
+            super().__init__()
+            self.poll_once_calls = 0
+
+        async def poll_once(self):
+            self.poll_once_calls += 1
+
+    execution = _ExecutionWithPoll()
+    portfolio = Portfolio()
+    clock = SimClock()
+
+    await run(
+        strategies=[strategy], feed=feed, execution=execution, portfolio=portfolio,
+        clock=clock, symbol_for_token=feed.symbol_for_token,
+    )
+
+    assert execution.poll_once_calls == len(candles)

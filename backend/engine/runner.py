@@ -304,6 +304,17 @@ async def run(
                 await ledger.record_order(order)
             await execution.submit(order)
 
+        # A live ExecutionClient (BrokerExecutionClient/RoutingExecutionClient,
+        # backend/engine/execution/broker.py, .../routing.py) needs to poll the
+        # broker for order-status changes; this isn't part of the shared
+        # ExecutionClient protocol since paper trading doesn't need it, so
+        # it's a best-effort duck-typed hook, same convention as on_bar
+        # above. Runs once per bar -- for a live/polling feed that's the
+        # feed's own poll_interval_seconds cadence, reused rather than
+        # inventing a second background task.
+        if hasattr(execution, "poll_once"):
+            await execution.poll_once()
+
         async for fill in execution.fills():
             quantity_before = portfolio.positions[fill.symbol].quantity if fill.symbol in portfolio.positions else 0.0
             portfolio.apply(fill)
