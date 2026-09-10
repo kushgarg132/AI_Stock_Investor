@@ -163,7 +163,6 @@ the revived chain emits `Intent` and is scored by `composite.py` like everything
 
 | Limit | Where | Consequence |
 |---|---|---|
-| No real order placement anywhere | only `SimulatedExecutionClient`; `TRADING_LIVE_ENABLED` refuses to start (`routers/trading.py`) | Live trading is a from-scratch build |
 | No backtest gate | nothing marks a strategy live-eligible; `backend/strategies/registry.py:16-59` is the only filter | A registered strategy trades immediately |
 | Single-process state | `_RUNS` (`routers/trading.py:53`), `ws/hub.py:9-10`, `scheduler.py:8-10` | Breaks with more than one worker |
 | `llm_service` module singleton | `backend/llm.py:125` | Per-user model choice (`omniroute_model` in `user_prefs`) is stored but never read |

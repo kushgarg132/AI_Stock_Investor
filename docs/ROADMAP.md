@@ -268,7 +268,7 @@ re-validates these strategies next will need to write a similar one-off runner.
 
 ---
 
-## Phase 5 — Live execution + F&O
+## Phase 5 — Live execution + F&O — **Phase 5a (equity live execution) done 2026-09-10**
 
 **Goal.** Real orders, and derivatives.
 
@@ -289,6 +289,30 @@ re-validates these strategies next will need to write a similar one-off runner.
 reconciles back into the ledger with matching quantity and price; a deliberately rejected
 order leaves the local book unchanged; an F&O position sizes in whole lots and respects
 margin.
+
+### What landed (Phase 5a only)
+
+- **Live equity execution** for Kite, Upstox, and Angel One brokers, placing real MARKET
+  orders via `BrokerExecutionClient` (Tasks 1-12). Gated by per-strategy live/paper toggle
+  (defaulting to all-paper), broker connection status, and backtest gate. No live broker
+  account exists to verify any of it against a real broker.
+- **Per-user, per-strategy paper/live toggle** in `PrefsStore` (each user, each strategy can
+  choose PAPER or LIVE); `TRADING_LIVE_ENABLED` configuration variable removed entirely.
+  Default state: all strategies in PAPER mode on fresh user.
+- **Reconciliation on run start** (`backend/engine/reconciliation.py`) — broker's fills and
+  open positions are read and merged into the local ledger so the engine's subsequent orders
+  are against current broker state, not just its own knowledge.
+- **No F&O (derivatives) in this pass.** The instrument model remains `(symbol, exchange)`
+  (not widened to include lot_size, expiry, strike, option_type). Sizing stays notional,
+  not lot-aware or margin-aware. F&O support is a separate future phase (`Phase 5b` or
+  later), not silently dropped.
+
+### Phase 5b and beyond
+
+- Instrument model expansion to `(symbol, exchange, instrument_type, lot_size, expiry,
+  strike, option_type)` for F&O support.
+- Lot-aware and margin-aware sizing in `size_intents`.
+- Position expiry handling for derivatives.
 
 ---
 
