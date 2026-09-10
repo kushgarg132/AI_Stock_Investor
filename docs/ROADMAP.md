@@ -12,9 +12,9 @@ where to start — nothing else in this repo tracks it.
 | 0 | Rename to NeoTrade | — | **done 2026-09-09** |
 | 1 | Multi-tenancy security | — | **done 2026-09-09** |
 | 2 | Broker adapter layer | 1 | **done 2026-09-09** |
-| 3 | Safety rails + backtest gate | — | not started |
-| 4 | Wire the three intraday strategies | 3 | not started |
-| 5 | Live execution + F&O | 1, 2, 3 | not started |
+| 3 | Safety rails + backtest gate | — | **done 2026-09-09** |
+| 4 | Wire the three intraday strategies | 3 | **done 2026-09-10** |
+| 5 | Live execution + F&O | 1, 2, 3 | **5a (equity) done 2026-09-10**, F&O not started |
 | 6 | Revive the long-term agent engine | — | not started |
 | 7 | Multi-worker readiness | — | not started |
 
