@@ -576,6 +576,73 @@ def test_start_routes_a_toggled_live_strategy_and_reconciles_positions(monkeypat
     assert "technical_breakout" in seen["execution"]._live_by_strategy
 
 
+class _NoopStrategy:
+    """Minimal real Strategy -- a proper StrategySpec (owner_by_symbol
+    scoping reads .spec.name/.spec.universe) with no-op lifecycle hooks,
+    since start_trading itself never calls on_start/on_bar (run() is
+    monkeypatched to a spy in these tests)."""
+
+    def __init__(self, name: str, universe: list[str]):
+        from backend.engine.protocols import StrategySpec
+
+        self.spec = StrategySpec(name=name, mode="LONGTERM", timeframe="1d", warmup_bars=0, universe=universe)
+
+    def on_start(self, ctx) -> None: ...
+    def on_bar(self, ctx, bar) -> None: ...
+    def on_fill(self, ctx, fill) -> None: ...
+
+
+def test_start_reconciliation_only_merges_symbols_owned_by_live_strategies(monkeypatch):
+    """A paper-only strategy's symbol (TCS, owned only by a strategy never
+    toggled live) must not be seeded from the broker's position book, even
+    though the broker holds a real position in it -- only RELIANCE (owned by
+    the live-toggled strategy) should land in the fresh Portfolio."""
+    from backend.brokers.protocol import BrokerSessionState
+    from backend.core.models import Position
+
+    fake_db = _fresh_fake_db()
+    monkeypatch.setattr(trading, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(trading, "YFinanceProvider", _ForeverQuoteProvider)
+    monkeypatch.setattr(trading, "db", fake_db)
+    monkeypatch.setattr(
+        trading, "build_default_strategies",
+        lambda **kwargs: [
+            _NoopStrategy("technical_breakout", ["RELIANCE"]),
+            _NoopStrategy("mean_reversion", ["TCS"]),
+        ],
+    )
+
+    broker_positions = {
+        "RELIANCE": Position(symbol="RELIANCE", quantity=5.0, avg_price=2400.0),
+        "TCS": Position(symbol="TCS", quantity=3.0, avg_price=3500.0),  # e.g. a manual trade
+    }
+    monkeypatch.setattr(
+        trading, "get_active_broker_adapter",
+        AsyncMock(return_value=_LiveAdapter(BrokerSessionState.ACTIVE, broker_positions)),
+    )
+
+    seen = {}
+
+    async def _spying_run(**kwargs):
+        seen["portfolio"] = kwargs["portfolio"]
+
+    monkeypatch.setattr(trading, "run", _spying_run)
+
+    async def _scenario():
+        # Only technical_breakout (RELIANCE) is toggled live; mean_reversion
+        # (TCS) stays paper-only.
+        await _seed_gate_and_prefs(fake_db, ["technical_breakout"])
+        req = trading.StartRequest(mode="LONGTERM", universe=["RELIANCE", "TCS"], poll_interval_seconds=0.01)
+        await trading.start_trading(req, user=_USER, runs=RunStore(fake_db.db))
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    asyncio.run(_scenario())
+
+    assert seen["portfolio"].positions["RELIANCE"].quantity == 5.0
+    assert "TCS" not in seen["portfolio"].positions
+
+
 def test_start_falls_back_to_paper_when_broker_session_is_not_active(monkeypatch):
     """Toggled live + backtest-gate eligible, but no ACTIVE broker session --
     default-to-paper wins; no live_by_strategy entries, plain paper execution."""

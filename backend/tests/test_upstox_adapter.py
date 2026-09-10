@@ -317,3 +317,44 @@ async def test_get_positions_maps_trading_symbol(monkeypatch):
 
     assert positions["RELIANCE"].quantity == 10
     assert positions["RELIANCE"].unrealized_pnl == 150.0
+
+
+async def test_get_order_status_null_fields_do_not_raise(monkeypatch):
+    """Upstox can return a null (not merely absent) value for a freshly-
+    placed, unfilled order -- plain `.get(key, default)` only applies the
+    default when the key is absent, so a bare float(data.get(...)) would
+    raise TypeError on `"filled_quantity": null`. Same `or 0` guard as
+    Angel One's equivalent method (backend/brokers/angel_one.py)."""
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"data": {
+            "order_id": "up-order-1", "status": "open",
+            "filled_quantity": None, "average_price": None,
+        }}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    status = await adapter.get_order_status("up-order-1")
+
+    assert status.filled_quantity == 0
+    assert status.average_price == 0
+
+
+async def test_get_positions_null_fields_do_not_raise(monkeypatch):
+    adapter = _adapter()
+
+    async def fake_get(self, url, **kwargs):
+        return httpx.Response(200, json={"data": [{
+            "trading_symbol": "RELIANCE", "quantity": None, "average_price": None,
+            "unrealised": None, "realised": None,
+        }]}, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fake_get)
+
+    positions = await adapter.get_positions()
+
+    assert positions["RELIANCE"].quantity == 0
+    assert positions["RELIANCE"].avg_price == 0
+    assert positions["RELIANCE"].realized_pnl == 0
+    assert positions["RELIANCE"].unrealized_pnl == 0

@@ -299,9 +299,12 @@ margin.
 - **Per-user, per-strategy paper/live toggle** in `PrefsStore` (each user, each strategy can
   choose PAPER or LIVE); `TRADING_LIVE_ENABLED` configuration variable removed entirely.
   Default state: all strategies in PAPER mode on fresh user.
-- **Reconciliation on run start** (`backend/engine/reconciliation.py`) — broker's fills and
-  open positions are read and merged into the local ledger so the engine's subsequent orders
-  are against current broker state, not just its own knowledge.
+- **Reconciliation on run start** (`backend/routers/trading.py`, inline in `start_trading`) —
+  broker's open positions are read and merged into the local ledger so the engine's subsequent
+  orders are against current broker state, not just its own knowledge. This runs once, at
+  `/trading/start`, not on every status-poll tick as the design doc originally envisioned — a
+  deliberate scope-down from Task 11, so a manual trade or missed fill during a long-running
+  session won't self-correct until the run is restarted.
 - **No F&O (derivatives) in this pass.** The instrument model remains `(symbol, exchange)`
   (not widened to include lot_size, expiry, strike, option_type). Sizing stays notional,
   not lot-aware or margin-aware. F&O support is a separate future phase (`Phase 5b` or

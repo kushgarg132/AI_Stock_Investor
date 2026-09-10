@@ -255,8 +255,19 @@ async def start_trading(
     portfolio = Portfolio()
     if active_adapter is not None and live_by_strategy:
         broker_positions = await active_adapter.get_positions()
+        # Scope the merge to symbols actually owned by a live-toggled
+        # strategy -- same owner_by_symbol construction runner.run() uses
+        # (backend/engine/runner.py) -- so a paper-only strategy's tracked
+        # position for a symbol the broker happens to also hold (a manual
+        # trade, a previous live session's leftover holding) isn't silently
+        # overwritten with the broker's real quantity/avg_price.
+        live_symbols = {
+            symbol for strategy in strategies for symbol in strategy.spec.universe
+            if strategy.spec.name in live_by_strategy
+        }
         for symbol, position in broker_positions.items():
-            portfolio.positions[symbol] = position
+            if symbol in live_symbols:
+                portfolio.positions[symbol] = position
     ledger = LedgerStore(db.db, user_id=user.id, run_id=run_id, on_change=publisher_for(user.id))
 
     # INTRADAY orders execute themselves; LONGTERM ones stop at a PENDING

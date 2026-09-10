@@ -15,12 +15,15 @@ BrokerAdapter.get_positions() directly instead, since it already needs to
 be async there.
 """
 
+import logging
 import time
 from datetime import datetime, timezone
 from typing import AsyncIterator
 
 from backend.core.models import Fill, Order, Position, Side
 from backend.engine.execution.live_order_store import LiveOrderStore
+
+logger = logging.getLogger(__name__)
 
 
 def _now() -> datetime:
@@ -63,17 +66,28 @@ class BrokerExecutionClient:
 
     async def poll_once(self) -> None:
         for row in await self._store.pending_for_user(self._user_id):
-            status = await self._adapter.get_order_status(row["broker_order_id"])
-            newly_filled = status.filled_quantity - row["filled_quantity"]
+            try:
+                status = await self._adapter.get_order_status(row["broker_order_id"])
+                newly_filled = status.filled_quantity - row["filled_quantity"]
 
-            await self._store.update_status(
-                row["_id"], status=status.status,
-                filled_quantity=status.filled_quantity, average_price=status.average_price,
-            )
+                await self._store.update_status(
+                    row["_id"], status=status.status,
+                    filled_quantity=status.filled_quantity, average_price=status.average_price,
+                )
 
-            if newly_filled > 0:
-                self._pending_fills.append(Fill(
-                    order_id=row["_id"], symbol=row["symbol"], side=Side(row["side"]),
-                    quantity=newly_filled, price=status.average_price,
-                    timestamp=_now(), costs=0.0,
-                ))
+                if newly_filled > 0:
+                    self._pending_fills.append(Fill(
+                        order_id=row["_id"], symbol=row["symbol"], side=Side(row["side"]),
+                        quantity=newly_filled, price=status.average_price,
+                        timestamp=_now(), costs=0.0,
+                    ))
+            except Exception:
+                # One broker hiccup on one order must not stall status
+                # updates for every other pending order in this batch (or,
+                # further up the call chain, kill the whole run -- see the
+                # design doc's poll_once error-isolation requirement).
+                logger.exception(
+                    "poll_once: get_order_status failed for order %s (broker_order_id=%s); skipping",
+                    row["_id"], row["broker_order_id"],
+                )
+                continue

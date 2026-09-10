@@ -279,8 +279,8 @@ class UpstoxAdapter:
         return BrokerOrderStatus(
             broker_order_id=broker_order_id,
             status=self._map_status(data["status"]),
-            filled_quantity=float(data.get("filled_quantity", 0)),
-            average_price=float(data.get("average_price", 0.0)),
+            filled_quantity=float(data.get("filled_quantity", 0) or 0),
+            average_price=float(data.get("average_price", 0.0) or 0),
         )
 
     async def get_positions(self) -> dict[str, Position]:
@@ -292,10 +292,10 @@ class UpstoxAdapter:
         return {
             row["trading_symbol"]: Position(
                 symbol=row["trading_symbol"],
-                quantity=float(row["quantity"]),
-                avg_price=float(row["average_price"]),
-                realized_pnl=float(row.get("realised", 0.0)),
-                unrealized_pnl=float(row.get("unrealised", 0.0)),
+                quantity=float(row.get("quantity", 0) or 0),
+                avg_price=float(row.get("average_price", 0) or 0),
+                realized_pnl=float(row.get("realised", 0.0) or 0),
+                unrealized_pnl=float(row.get("unrealised", 0.0) or 0),
             )
             for row in resp.json()["data"]
         }
