@@ -212,7 +212,7 @@ here since Phase 3 is what makes it a safety-relevant behavior rather than a cos
 
 ---
 
-## Phase 4 — Wire the three intraday strategies
+## Phase 4 — Wire the three intraday strategies — **done 2026-09-10**
 
 **Goal.** Put `VWAPReversionStrategy`, `ORBStrategy` and `RSIMomentumScalpStrategy` into
 `backend/strategies/registry.py:16-59` — the only thing keeping them out of live trading
@@ -228,6 +228,43 @@ assertion.
 
 **Done when:** each of the three has a stored backtest result, the gate's verdict on each is
 recorded, and only the ones that passed are live-eligible.
+
+### What landed
+
+`VWAPReversionStrategy`, `ORBStrategy`, `RSIMomentumScalpStrategy` are in
+`backend/strategies/registry.py`'s default set (now 7 strategies total, 4 INTRADAY + 3
+LONGTERM). `backend/tests/test_strategies_ported.py`'s hardcoded counts were updated
+deliberately (7, and 8 with `quality_momentum`), not deleted.
+
+Real backtests ran against yfinance 5m data for the full `ALL_SCAN_STOCKS` universe (79/83
+symbols resolved) and were recorded into the real `strategy_backtests` collection via
+`BacktestGateStore.record`. Also backtested `volume_surge` — the pre-existing 4th intraday
+strategy, which had never been through the Phase 3 gate before it existed:
+
+| Strategy | Trades | Window | Win rate | Profit factor | Max drawdown | Sharpe | Verdict |
+|---|---|---|---|---|---|---|---|
+| volume_surge | 509 | 58d | 0.48 | 0.91 | 11.89% | -1.21 | **FAIL** |
+| vwap_reversion | 128 | 58d | 0.47 | 0.91 | 19.91% | -1.16 | **FAIL** |
+| orb_breakout | 198 | 58d | 0.42 | 0.64 | 25.37% | -4.20 | **FAIL** |
+| rsi_momentum_scalp | 84 | 58d | 0.48 | 0.72 | 25.66% | -2.38 | **FAIL** |
+
+**All four fail the gate.** Two independent reasons, both real: yfinance's 5-minute
+intraday data caps at roughly 58-60 days no matter what range is requested (Phase 3's fix to
+`backend/engine/backtest.py` makes `BacktestResult.start_date/end_date` report that real
+span, not a claimed one — see Phase 3's own notes), so none can ever clear the 365-day
+window criterion against this data source. Separately, on the data that *does* exist, none
+of the four are actually profitable (profit factor <1 for two, drawdowns 12-26%) — this
+isn't just a data-availability technicality, the strategies as tuned currently lose money.
+
+No strategy is live-eligible. This is the gate doing its job, not a bug — see this file's own
+docstring in `backend/risk/backtest_gate.py`. Two real follow-ups this surfaces, neither
+solved here: (1) a longer-history intraday data source is needed before any 5m strategy can
+ever pass on window alone (a live broker's own historical API, once one is connected, likely
+has more than yfinance's ~60 days); (2) the strategies' actual profitability needs rework
+independent of the window question. No standalone backtest script is checked into this repo
+— the one used here (fetch each symbol's 5m history once, run each strategy through
+`run_backtest`, record into `BacktestGateStore`) was a scratch file, not committed. Whoever
+re-validates these strategies next will need to write a similar one-off runner.
 
 ---
 

@@ -354,12 +354,15 @@ def test_rsi_momentum_scalp_strategy_silent_on_flat_bars():
 # registry.build_default_strategies
 # ---------------------------------------------------------------------------
 
-def test_build_default_strategies_returns_expected_four():
+def test_build_default_strategies_returns_expected_seven():
     strategies = build_default_strategies(universe=[SYMBOL])
-    assert len(strategies) == 4
+    assert len(strategies) == 7
 
     by_mode_timeframe = sorted((s.spec.mode, s.spec.timeframe) for s in strategies)
     assert by_mode_timeframe == [
+        ("INTRADAY", "5m"),
+        ("INTRADAY", "5m"),
+        ("INTRADAY", "5m"),
         ("INTRADAY", "5m"),
         ("LONGTERM", "1d"),
         ("LONGTERM", "1d"),
@@ -379,7 +382,7 @@ def test_build_default_strategies_includes_quality_momentum_when_provided():
         quality_universe=[SYMBOL],
         quality_scores={SYMBOL: 0.6},
     )
-    assert len(strategies) == 5
+    assert len(strategies) == 8
 
     quality_strategy = next(s for s in strategies if s.spec.name == "quality_momentum")
     assert quality_strategy.spec.mode == "LONGTERM"

@@ -1,12 +1,15 @@
-"""Factory for the 4 ported strategies (Task 3), so callers -- the engine
-runner, later tasks' wiring -- don't hardcode strategy construction.
+"""Factory for the default strategy set, so callers -- the engine runner,
+/trading/start -- don't hardcode strategy construction.
 """
 
 from typing import Optional
 
 from backend.components.quant.indian_stocks import ALL_SCAN_STOCKS
 from backend.engine.protocols import Strategy
+from backend.strategies.intraday.orb_breakout import ORBStrategy
+from backend.strategies.intraday.rsi_momentum_scalp import RSIMomentumScalpStrategy
 from backend.strategies.intraday.volume_surge import VolumeSurgeStrategy
+from backend.strategies.intraday.vwap_reversion import VWAPReversionStrategy
 from backend.strategies.longterm.breakout import TechnicalBreakoutStrategy
 from backend.strategies.longterm.macd_crossover import MACDCrossoverStrategy
 from backend.strategies.longterm.mean_reversion import MeanReversionStrategy
@@ -51,6 +54,9 @@ def build_default_strategies(
         MeanReversionStrategy(universe, symbol_for_token),
         MACDCrossoverStrategy(universe, symbol_for_token),
         VolumeSurgeStrategy(universe, symbol_for_token),
+        VWAPReversionStrategy(universe, symbol_for_token),
+        ORBStrategy(universe, symbol_for_token),
+        RSIMomentumScalpStrategy(universe, symbol_for_token),
     ]
     if quality_universe is not None and quality_scores is not None:
         strategies.append(

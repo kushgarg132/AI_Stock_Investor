@@ -32,6 +32,20 @@ async def run_backtest(
     portfolio = Portfolio()
     clock = SimClock()
 
+    bar_timestamps: list[datetime] = []
+    original_feed_iter = feed.__aiter__
+
+    async def timestamped_bars():
+        # BacktestResult.start_date/end_date report the *actual* span of
+        # candles a data provider returned, not the range the caller asked
+        # for -- yfinance's 5m interval silently caps at ~60 days of
+        # history no matter what `start` is, so trusting `start`/`end`
+        # verbatim would let a caller claim a window the backtest never
+        # really ran (see docs/ROADMAP.md Phase 4).
+        async for bar in original_feed_iter():
+            bar_timestamps.append(bar.timestamp)
+            yield bar
+
     trades: list[dict] = []
     original_fills = execution.fills
 
@@ -61,7 +75,7 @@ async def run_backtest(
 
     await run(
         strategies=strategies,
-        feed=feed,
+        feed=timestamped_bars(),
         execution=execution,
         portfolio=portfolio,
         clock=clock,
@@ -69,6 +83,9 @@ async def run_backtest(
         account_size=account_size,
         max_exposure=max_exposure,
     )
+
+    actual_start = min(bar_timestamps) if bar_timestamps else start
+    actual_end = max(bar_timestamps) if bar_timestamps else start
 
     total_trades = len(trades)
     total_pnl = sum(t["realized_pnl"] for t in trades)
@@ -84,8 +101,8 @@ async def run_backtest(
 
     return BacktestResult(
         symbol=",".join(instrument.tradingsymbol for instrument in instruments),
-        start_date=start,
-        end_date=end,
+        start_date=actual_start,
+        end_date=actual_end,
         total_trades=total_trades,
         win_rate=win_rate,
         profit_factor=profit_factor,
