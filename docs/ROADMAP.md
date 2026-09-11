@@ -14,7 +14,7 @@ where to start — nothing else in this repo tracks it.
 | 2 | Broker adapter layer | 1 | **done 2026-09-09** |
 | 3 | Safety rails + backtest gate | — | **done 2026-09-09** |
 | 4 | Wire the three intraday strategies | 3 | **done 2026-09-10** |
-| 5 | Live execution + F&O | 1, 2, 3 | **5a (equity) done 2026-09-10**, F&O not started |
+| 5 | Live execution + F&O | 1, 2, 3 | **5a (equity) done 2026-09-10**, **5b (CSP plumbing) done 2026-09-11** |
 | 6 | Revive the long-term agent engine | — | not started |
 | 7 | Multi-worker readiness | — | not started |
 
@@ -305,17 +305,56 @@ margin.
   `/trading/start`, not on every status-poll tick as the design doc originally envisioned — a
   deliberate scope-down from Task 11, so a manual trade or missed fill during a long-running
   session won't self-correct until the run is restarted.
-- **No F&O (derivatives) in this pass.** The instrument model remains `(symbol, exchange)`
-  (not widened to include lot_size, expiry, strike, option_type). Sizing stays notional,
-  not lot-aware or margin-aware. F&O support is a separate future phase (`Phase 5b` or
-  later), not silently dropped.
+- **No F&O (derivatives) in this pass.** The instrument model remained `(symbol, exchange)`
+  and sizing stayed notional. See Phase 5b below — F&O plumbing plus one real strategy landed
+  2026-09-11.
 
-### Phase 5b and beyond
+### What landed (Phase 5b — F&O plumbing + cash-secured put, 2026-09-11)
 
-- Instrument model expansion to `(symbol, exchange, instrument_type, lot_size, expiry,
-  strike, option_type)` for F&O support.
-- Lot-aware and margin-aware sizing in `size_intents`.
-- Position expiry handling for derivatives.
+Design: `docs/superpowers/specs/2026-09-11-phase-5b-fno-cash-secured-put-design.md`. Plan:
+`docs/superpowers/plans/2026-09-11-phase-5b-fno-cash-secured-put.md`.
+
+- **`Instrument` widened** with `expiry`/`strike` (both `Optional`, `None` for equities).
+  `instrument_type` (already generic) carries CE/PE/FUT for F&O rows — no separate
+  `option_type` field, it would have duplicated existing data.
+- **`backend/options/`** — new package: `resolver.py` (deterministic strike/expiry selection
+  off a small curated F&O-eligible symbol table, no live option-chain lookup exists to query),
+  `pricing.py` (Black-Scholes premium off realized volatility as an IV proxy, flat-%
+  margin approximation), `sizing.py` (lot-based collateral-budget sizing, a deliberately
+  separate function from equity `size_intents`' stop-distance risk formula — the two sizing
+  models don't share meaning).
+- **`CashSecuredPutStrategy`** — new LONGTERM strategy (8th in the default set), reuses
+  `MeanReversionStrategy`'s oversold trigger, emits an `option_flavor="CSP"` Intent that
+  `size_intents` dispatches to the options sizer instead of the equity path.
+  `is_fo_eligible` gates it to `resolver.STRIKE_INTERVALS`' curated symbols only.
+- **Rides the existing suggestion/approval pipeline unmodified in structure.** Investigated
+  during design: LONGTERM suggestions never reach a real broker even on approval
+  (`suggestions/service.py::execute_suggestion` always synthesizes a paper fill) — true for
+  every LONGTERM strategy, not just this one — so CSP is PAPER-only by the same construction
+  the other four LONGTERM strategies already are, with no backtest-gate interaction (that gate
+  only filters the INTRADAY live/paper toggle, never LONGTERM).
+- **Expiry close-out**: a fourth daily scheduler job closes any open option position past
+  expiry (worthless if OTM, simple intrinsic-value approximation if ITM).
+- **Only Kite's instrument source maps `expiry`/`strike`** (verified against the installed
+  pykiteconnect package's own `_parse_instruments` source). Upstox/AngelOne's `instruments()`
+  never mapped those columns either — real per-broker scrip-format verification needed before
+  extending them, not done here. The CSP strategy is exercisable end to end with a connected
+  Kite session; Upstox/AngelOne accounts won't populate NFO contracts for it yet.
+- **No live broker margin-API integration.** `estimate_margin` is the flat-percentage
+  approximation only — the spec's "try the broker's own margin endpoint first" needed more
+  per-adapter verification than this pass did; deferred, not silently dropped.
+- **No covered call.** CSP alone. Covered call is a natural follow-on once these primitives
+  exist, but needs its own trigger (against an existing long position).
+
+### Phase 5b and beyond — still open
+
+- Upstox/AngelOne NFO `expiry`/`strike` instrument mapping (needs real per-broker scrip-format
+  verification, same posture as every other broker-specific claim in this codebase).
+- Live broker margin-API integration (`estimate_margin`'s upgrade path — see
+  `backend/options/pricing.py`'s `ponytail:` comment).
+- Covered call strategy.
+- Real option-chain data source, if one ever becomes available (no live broker account exists
+  to test against today, same constraint 5a operated under).
 
 ---
 
