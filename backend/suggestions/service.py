@@ -12,6 +12,7 @@ from typing import Optional
 
 from backend.core.models import Fill, Order, Side
 from backend.engine.execution.costs import calculate_indian_costs
+from backend.engine.execution.options_costs import calculate_options_costs
 from backend.engine.persistence import LedgerStore
 from backend.engine.portfolio import Portfolio
 
@@ -21,7 +22,8 @@ async def execute_suggestion(
 ) -> Order:
     now = now or datetime.now(timezone.utc)
     side = Side(suggestion["side"])
-    product = "MIS" if suggestion["mode"] == "INTRADAY" else "CNC"
+    is_option = suggestion.get("option_contract") is not None
+    product = "NRML" if is_option else ("MIS" if suggestion["mode"] == "INTRADAY" else "CNC")
     quantity = suggestion["quantity"]
 
     order = Order(
@@ -30,9 +32,13 @@ async def execute_suggestion(
     )
     await ledger.record_order(order)
 
+    costs = (
+        calculate_options_costs(price, quantity, side) if is_option
+        else calculate_indian_costs(price, quantity, side, product)
+    )
     fill = Fill(
         order_id=order.id, symbol=order.symbol, side=side, quantity=quantity, price=price,
-        timestamp=now, costs=calculate_indian_costs(price, quantity, side, product),
+        timestamp=now, costs=costs,
     )
 
     portfolio = Portfolio()
