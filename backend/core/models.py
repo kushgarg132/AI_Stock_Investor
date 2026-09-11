@@ -61,6 +61,11 @@ class Intent:
     reason_codes: list[str]
     stop_hint: Optional[float] = None
     target_hint: Optional[float] = None
+    # "CSP" (cash-secured put) marks an Intent that size_intents dispatches
+    # to backend/options/sizing.py instead of the equity stop-distance
+    # sizer -- see that module's docstring. None (every existing strategy)
+    # means "ordinary equity intent", zero behavior change.
+    option_flavor: Optional[Literal["CSP"]] = None
 
     def __post_init__(self) -> None:
         if not self.reason_codes:
@@ -84,7 +89,7 @@ class Order(BaseModel):
     # this field. Defaults to MIS since that's what an intraday-mode
     # strategy's forced square-off order always is; size_intents (Task 6)
     # sets it explicitly per order from the owning strategy's spec.mode.
-    product: Literal["CNC", "MIS"] = "MIS"
+    product: Literal["CNC", "MIS", "NRML"] = "MIS"
     # Which strategy emitted this order -- None means "not attributable to
     # a live-eligible strategy", which is also the correct default: an
     # order with no strategy_name can never be routed live by

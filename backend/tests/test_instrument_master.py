@@ -99,3 +99,26 @@ async def test_seed_file_loads_into_master(master):
 
     # Idempotent re-run.
     assert await refresh_instruments(SeedFileSource(), master) == 0
+
+
+def test_instrument_accepts_option_fields():
+    from datetime import datetime
+
+    inst = Instrument(
+        exchange="NFO", tradingsymbol="RELIANCE24DEC2800PE", name="RELIANCE",
+        instrument_token=1, exchange_token=1, instrument_type="PE", segment="NFO-OPT",
+        lot_size=250, tick_size=0.05,
+        expiry=datetime(2024, 12, 26), strike=2800.0,
+    )
+    assert inst.expiry == datetime(2024, 12, 26)
+    assert inst.strike == 2800.0
+
+
+def test_instrument_option_fields_default_to_none_for_equities():
+    inst = Instrument(
+        exchange="NSE", tradingsymbol="RELIANCE", name="RELIANCE",
+        instrument_token=1, exchange_token=1, instrument_type="EQ", segment="NSE",
+        lot_size=1, tick_size=0.05,
+    )
+    assert inst.expiry is None
+    assert inst.strike is None
