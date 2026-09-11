@@ -16,6 +16,7 @@ from backend.strategies.intraday.rsi_momentum_scalp import RSIMomentumScalpStrat
 from backend.strategies.intraday.volume_surge import VolumeSurgeStrategy
 from backend.strategies.intraday.vwap_reversion import VWAPReversionStrategy
 from backend.strategies.longterm.breakout import TechnicalBreakoutStrategy
+from backend.strategies.longterm.cash_secured_put import CashSecuredPutStrategy
 from backend.strategies.longterm.macd_crossover import MACDCrossoverStrategy
 from backend.strategies.longterm.mean_reversion import MeanReversionStrategy
 from backend.strategies.registry import build_default_strategies
@@ -124,6 +125,40 @@ def test_mean_reversion_strategy_emits_buy_intent():
 def test_mean_reversion_strategy_silent_on_flat_bars():
     strategy = MeanReversionStrategy([SYMBOL], {TOKEN: SYMBOL})
     intents = _run(strategy, _flat_bars(60))
+    assert intents == []
+
+
+# ---------------------------------------------------------------------------
+# CashSecuredPutStrategy
+# ---------------------------------------------------------------------------
+
+def test_cash_secured_put_fires_on_oversold_fo_eligible_symbol():
+    # RELIANCE is in resolver.STRIKE_INTERVALS (F&O-eligible); SYMBOL (this
+    # file's own test constant, "TEST") is not. This file's shared `_run()`
+    # hardcodes its SimpleStrategyContext's symbol_for_token to
+    # {TOKEN: SYMBOL}, so a different underlying needs its own context built
+    # the same way `_run()` builds one, just keyed to "RELIANCE" instead.
+    strategy = CashSecuredPutStrategy(["RELIANCE"], {TOKEN: "RELIANCE"})
+    bars = _oversold_bars()
+    ctx = SimpleStrategyContext(SimClock(), Portfolio(), {TOKEN: "RELIANCE"})
+    for bar in bars[:-1]:
+        ctx.update(bar)
+    ctx.update(bars[-1])
+    strategy.on_bar(ctx, bars[-1])
+    intents = ctx.drain_intents()
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.SELL
+    assert intent.option_flavor == "CSP"
+    assert intent.symbol == "RELIANCE"
+
+
+def test_cash_secured_put_silent_for_non_fo_eligible_symbol():
+    # SYMBOL ("TEST") is not in resolver.STRIKE_INTERVALS -- same oversold
+    # bars, but is_fo_eligible gates it out before the RSI/Bollinger check
+    # ever runs.
+    strategy = CashSecuredPutStrategy([SYMBOL], {TOKEN: SYMBOL})
+    intents = _run(strategy, _oversold_bars())
     assert intents == []
 
 
@@ -354,9 +389,9 @@ def test_rsi_momentum_scalp_strategy_silent_on_flat_bars():
 # registry.build_default_strategies
 # ---------------------------------------------------------------------------
 
-def test_build_default_strategies_returns_expected_seven():
+def test_build_default_strategies_returns_expected_eight():
     strategies = build_default_strategies(universe=[SYMBOL])
-    assert len(strategies) == 7
+    assert len(strategies) == 8
 
     by_mode_timeframe = sorted((s.spec.mode, s.spec.timeframe) for s in strategies)
     assert by_mode_timeframe == [
@@ -364,6 +399,7 @@ def test_build_default_strategies_returns_expected_seven():
         ("INTRADAY", "5m"),
         ("INTRADAY", "5m"),
         ("INTRADAY", "5m"),
+        ("LONGTERM", "1d"),
         ("LONGTERM", "1d"),
         ("LONGTERM", "1d"),
         ("LONGTERM", "1d"),
@@ -382,7 +418,7 @@ def test_build_default_strategies_includes_quality_momentum_when_provided():
         quality_universe=[SYMBOL],
         quality_scores={SYMBOL: 0.6},
     )
-    assert len(strategies) == 8
+    assert len(strategies) == 9
 
     quality_strategy = next(s for s in strategies if s.spec.name == "quality_momentum")
     assert quality_strategy.spec.mode == "LONGTERM"

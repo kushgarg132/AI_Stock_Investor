@@ -11,6 +11,7 @@ from backend.strategies.intraday.rsi_momentum_scalp import RSIMomentumScalpStrat
 from backend.strategies.intraday.volume_surge import VolumeSurgeStrategy
 from backend.strategies.intraday.vwap_reversion import VWAPReversionStrategy
 from backend.strategies.longterm.breakout import TechnicalBreakoutStrategy
+from backend.strategies.longterm.cash_secured_put import CashSecuredPutStrategy
 from backend.strategies.longterm.macd_crossover import MACDCrossoverStrategy
 from backend.strategies.longterm.mean_reversion import MeanReversionStrategy
 from backend.strategies.longterm.quality_momentum import QualityMomentumStrategy
@@ -57,6 +58,7 @@ def build_default_strategies(
         VWAPReversionStrategy(universe, symbol_for_token),
         ORBStrategy(universe, symbol_for_token),
         RSIMomentumScalpStrategy(universe, symbol_for_token),
+        CashSecuredPutStrategy(universe, symbol_for_token),
     ]
     if quality_universe is not None and quality_scores is not None:
         strategies.append(
