@@ -76,6 +76,35 @@ async def test_create_persists_the_engines_own_numbers(store):
     assert suggestion["score"]["final"] == pytest.approx(CompositeScore(rule_score=0.8, ai_score=0.4).final)
     assert suggestion["notional"] == pytest.approx(1200.0)
     assert suggestion["ai_thesis"] is None
+    assert suggestion["option_contract"] is None
+
+
+def _option_proposal() -> Proposal:
+    return Proposal(
+        order=Order(
+            id="o2", symbol="RELIANCE24DEC2800PE", side=Side.SELL, quantity=250.0,
+            order_type="MARKET", limit_price=None, product="NRML",
+        ),
+        intent=Intent(
+            symbol="RELIANCE", side=Side.SELL, strength=0.8, reason_codes=["oversold_csp"],
+            option_flavor="CSP",
+        ),
+        score=CompositeScore(rule_score=0.8, ai_score=0.0),
+        entry=45.0,
+        mode="LONGTERM",
+        option_contract={
+            "strike": 2760.0, "expiry": "2024-12-26T00:00:00", "option_type": "PE",
+            "lot_size": 250, "premium_estimate": 45.0, "margin_estimate": 82800.0,
+            "underlying_spot": 2900.0,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_persists_option_contract_when_present(store):
+    suggestion = await store.create(user_id="alice", proposal=_option_proposal(), source="run", run_id="run-1")
+    assert suggestion["option_contract"]["strike"] == 2760.0
+    assert suggestion["option_contract"]["option_type"] == "PE"
 
 
 @pytest.mark.asyncio

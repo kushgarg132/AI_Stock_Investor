@@ -52,6 +52,7 @@ class SuggestionStore:
             "stop": intent.stop_hint,
             "target": intent.target_hint,
             "notional": order.quantity * proposal.entry,
+            "option_contract": getattr(proposal, "option_contract", None),
             "strength": intent.strength,
             "reason_codes": list(intent.reason_codes),
             "score": {"rule": score.rule_score, "ai": score.ai_score, "final": score.final},
