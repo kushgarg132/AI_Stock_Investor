@@ -14,11 +14,19 @@ with `Instrument`'s fields already, but not entirely):
   it to `int` explicitly since `Instrument.exchange_token` is typed `int`.
 - Kite's dump has no ISIN column at all -- `Instrument.isin` is left `None`
   (it's `Optional` for exactly this reason per `Instrument`'s docstring).
-- `last_price`, `expiry`, `strike` are present in Kite's row but dropped
-  here -- `Instrument` deliberately excludes them (see its docstring).
+- `last_price` is present in Kite's row but dropped here -- volatile, no
+  use for reference data. `expiry`/`strike` ARE mapped now (Phase 5b): the
+  SDK's own `_parse_instruments` already parses `expiry` into a
+  `datetime.date` when present (empty string for equities, left
+  unconverted) and `strike` into a `float` (0.0 for equities) -- verified
+  against the installed pykiteconnect package's `connect.py::
+  _parse_instruments` source directly. `Instrument.expiry` is typed
+  `datetime` (not `date`) since bson/pymongo has no native `date` codec;
+  this module converts at the boundary.
 """
 
 import asyncio
+from datetime import date, datetime, time
 from typing import Callable
 
 from backend.instruments.models import Instrument
@@ -42,6 +50,9 @@ class KiteInstrumentSource:
 
     @staticmethod
     def _to_instrument(row: dict) -> Instrument:
+        raw_expiry = row["expiry"]
+        expiry = datetime.combine(raw_expiry, time.min) if isinstance(raw_expiry, date) else None
+        strike = float(row["strike"]) if row.get("strike") else None
         return Instrument(
             exchange=row["exchange"],
             tradingsymbol=row["tradingsymbol"],
@@ -52,4 +63,6 @@ class KiteInstrumentSource:
             segment=row["segment"],
             lot_size=int(row["lot_size"]),
             tick_size=float(row["tick_size"]),
+            expiry=expiry,
+            strike=strike,
         )

@@ -76,3 +76,33 @@ async def test_fetch_maps_multiple_rows():
 
     assert [inst.tradingsymbol for inst in instruments] == ["RELIANCE", "TCS"]
     assert instruments[1].exchange_token == 11536
+
+
+async def test_fetch_maps_nfo_option_rows_with_expiry_and_strike():
+    from datetime import date, datetime
+
+    mock_kite = MagicMock()
+    mock_kite.instruments.return_value = [_canned_kite_instruments_row(
+        tradingsymbol="RELIANCE24DEC2800PE", exchange="NFO", segment="NFO-OPT",
+        instrument_type="PE", lot_size=250, strike=2800.0, expiry=date(2024, 12, 26),
+    )]
+    source = KiteInstrumentSource(kite_client_factory=lambda: mock_kite, exchanges=("NFO",))
+
+    instruments = await source.fetch()
+
+    assert len(instruments) == 1
+    inst = instruments[0]
+    assert inst.expiry == datetime(2024, 12, 26)
+    assert inst.strike == 2800.0
+    assert inst.instrument_type == "PE"
+
+
+async def test_fetch_maps_equity_rows_with_no_expiry_or_strike():
+    mock_kite = MagicMock()
+    mock_kite.instruments.return_value = [_canned_kite_instruments_row()]  # expiry="", strike=0.0
+    source = KiteInstrumentSource(kite_client_factory=lambda: mock_kite)
+
+    instruments = await source.fetch()
+
+    assert instruments[0].expiry is None
+    assert instruments[0].strike is None

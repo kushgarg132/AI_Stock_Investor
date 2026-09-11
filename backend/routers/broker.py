@@ -117,6 +117,14 @@ async def broker_connect(
     if count:
         logger.info("Instrument master expanded from %s: %d upserted.", broker, count)
 
+    # Phase 5b: also pull this broker's F&O (options/futures) dump, so
+    # backend.options.resolver can resolve a CSP contract without a live
+    # option-chain lookup. Same best-effort posture as the NSE/BSE refresh
+    # above -- refresh_instruments_from_adapter swallows its own failures.
+    nfo_count = await refresh_instruments_from_adapter(adapter, exchanges=("NFO",))
+    if nfo_count:
+        logger.info("NFO instrument master expanded from %s: %d upserted.", broker, nfo_count)
+
     return {"state": (await adapter.state()).value, "connected": True}
 
 
