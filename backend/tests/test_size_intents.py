@@ -7,14 +7,19 @@ regardless of the exact conviction-to-size formula:
 Plus the exposure-limit rejection and missing-stop_hint skip paths.
 """
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from mongomock_motor import AsyncMongoMockClient
 
 from backend.core.models import Intent, Position, Side
 from backend.engine.portfolio import Portfolio
 from backend.engine.runner import size_intents
+from backend.instruments.master import InstrumentMaster
+from backend.instruments.models import Instrument
+from backend.options import resolver
 
 
 class _FakeCtx:
@@ -223,3 +228,85 @@ def test_order_strategy_name_defaults_to_none():
     from backend.core.models import Order, Side
     order = Order(id="x", symbol="RELIANCE", side=Side.BUY, quantity=1.0, order_type="MARKET")
     assert order.strategy_name is None
+
+
+# ---------------------------------------------------------------------------
+# option_flavor dispatch (Phase 5b)
+# ---------------------------------------------------------------------------
+
+class _FakeCtxWithNow:
+    """Same shape as this file's `_FakeCtx`, plus the `.now()` method
+    size_option_intent needs and per-symbol price *series* (not a single
+    price) so realized_volatility has enough history to compute."""
+
+    def __init__(self, prices: dict[str, list[float]], now: datetime) -> None:
+        self._series = prices
+        self._now = now
+
+    def history(self, symbol: str, n: int) -> list:
+        series = self._series.get(symbol, [])
+        return [SimpleNamespace(close=c) for c in series[-n:]]
+
+    def now(self) -> datetime:
+        return self._now
+
+
+_NOW = datetime(2024, 12, 1, tzinfo=timezone.utc)
+_CLOSES = [2900.0, 2880.0, 2910.0, 2895.0, 2905.0] * 5
+
+
+@pytest.mark.asyncio
+async def test_option_flavored_intent_skips_equity_sizing_and_needs_no_stop_hint():
+    intent = Intent(
+        symbol="RELIANCE", side=Side.SELL, strength=0.8, reason_codes=["oversold_csp"],
+        option_flavor="CSP",  # no stop_hint -- would be skipped by the equity path
+    )
+    ctx = _FakeCtxWithNow({"RELIANCE": _CLOSES}, _NOW)
+    orders = await size_intents(
+        [intent], Portfolio(), ctx, {}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0, master=None,
+    )
+    # master=None -> size_option_intent returns None -> no order, but it
+    # must not fall through to the equity path and crash on stop_hint=None.
+    assert orders == []
+
+
+@pytest.mark.asyncio
+async def test_option_flavored_intent_produces_an_order_with_a_synced_contract():
+    master = InstrumentMaster(AsyncMongoMockClient()["test_db"])
+    expiry = resolver.next_monthly_expiry(_NOW.date())
+    strike = resolver.nearest_strike("RELIANCE", _CLOSES[-1], 0.05)
+    tradingsymbol = resolver.format_tradingsymbol("RELIANCE", expiry, strike, "PE")
+    await master.upsert_many([Instrument(
+        exchange="NFO", tradingsymbol=tradingsymbol, name="RELIANCE",
+        instrument_token=1, exchange_token=1, instrument_type="PE", segment="NFO-OPT",
+        lot_size=250, tick_size=0.05,
+        expiry=datetime.combine(expiry, datetime.min.time()), strike=strike,
+    )])
+
+    intent = Intent(
+        symbol="RELIANCE", side=Side.SELL, strength=0.8, reason_codes=["oversold_csp"],
+        option_flavor="CSP",
+    )
+    ctx = _FakeCtxWithNow({"RELIANCE": _CLOSES}, _NOW)
+
+    captured = []
+
+    async def sink(proposal):
+        captured.append(proposal)
+        return False  # sink owns it, same contract as the equity/LONGTERM path
+
+    orders = await size_intents(
+        [intent], Portfolio(), ctx, {}, _no_sentiment_redis(),
+        account_size=1_000_000.0, max_exposure=1_000_000.0, master=master, order_sink=sink,
+    )
+
+    assert orders == []  # sink took ownership
+    assert len(captured) == 1
+    proposal = captured[0]
+    assert proposal.order.symbol == tradingsymbol
+    assert proposal.order.product == "NRML"
+    assert proposal.option_contract is not None
+    assert proposal.option_contract["strike"] == strike
+    assert proposal.option_contract["option_type"] == "PE"
+    assert proposal.entry == proposal.option_contract["premium_estimate"]

@@ -128,6 +128,7 @@ async def scan_universe(
         max_exposure=max_exposure,
         ledger=None,
         order_sink=sink,
+        master=master,
     )
 
     created = [

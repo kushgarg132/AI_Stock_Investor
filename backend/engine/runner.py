@@ -17,6 +17,8 @@ from backend.engine.persistence import LedgerStore
 from backend.engine.portfolio import Portfolio
 from backend.engine.protocols import DataFeed, ExecutionClient, Strategy, StrategyContext
 from backend.engine.session import IST, is_past_square_off_time
+from backend.instruments.master import InstrumentMaster
+from backend.options.sizing import size_option_intent
 from backend.risk.kill_switch import should_trip
 from backend.scoring.composite import CompositeScore, score_intent
 
@@ -37,6 +39,11 @@ class Proposal:
     score: CompositeScore
     entry: float
     mode: str
+    # Populated only for an option_flavor'd Intent (Phase 5b):
+    # strike/expiry/option_type/premium/margin/underlying_spot, so
+    # SuggestionStore.create can persist a real contract without
+    # re-deriving it. None for every ordinary equity Proposal.
+    option_contract: Optional[dict] = None
 
 
 # Returns True if the order should execute now, False if the sink took
@@ -59,6 +66,7 @@ async def size_intents(
     order_sink: Optional[OrderSink] = None,
     per_trade_cap: Optional[float] = None,
     kill_switch_tripped: bool = False,
+    master: Optional[InstrumentMaster] = None,
 ) -> list[Order]:
     """Scores each Intent (backend.scoring.composite.score_intent, which
     caps AI's influence at AI_CAP regardless of what's passed here), then
@@ -108,6 +116,32 @@ async def size_intents(
         # human-approved suggestion regardless, so blocking them too would
         # only hide information from the person reviewing the inbox.
         if kill_switch_tripped and mode == "INTRADAY":
+            continue
+
+        if intent.option_flavor is not None:
+            result = await size_option_intent(intent, scored, ctx, account_size, master)
+            if result is None:
+                continue
+            result.order.strategy_name = (
+                owning_strategy.spec.name if owning_strategy is not None else None
+            )
+            option_contract = {
+                "strike": result.contract.strike,
+                "expiry": result.contract.expiry.isoformat() if result.contract.expiry else None,
+                "option_type": result.contract.instrument_type,
+                "lot_size": result.contract.lot_size,
+                "premium_estimate": result.premium_estimate,
+                "margin_estimate": result.margin_estimate,
+                "underlying_spot": result.underlying_spot,
+            }
+            if order_sink is not None:
+                proposal = Proposal(
+                    order=result.order, intent=intent, score=scored,
+                    entry=result.premium_estimate, mode=mode, option_contract=option_contract,
+                )
+                if not await order_sink(proposal):
+                    continue
+            orders.append(result.order)
             continue
 
         if intent.stop_hint is None:
@@ -214,6 +248,7 @@ async def run(
     per_trade_cap: Optional[float] = None,
     daily_loss_limit: Optional[float] = None,
     kill_switch_store=None,
+    master: Optional[InstrumentMaster] = None,
 ) -> None:
     """`symbol_for_token` is not in the plan's pseudocode signature; it's
     needed because `Bar` identifies instruments by `instrument_token` while
@@ -296,6 +331,7 @@ async def run(
         orders = await size_intents(
             ctx.drain_intents(), portfolio, ctx, owner_by_symbol, redis, account_size, max_exposure,
             order_sink=order_sink, per_trade_cap=per_trade_cap, kill_switch_tripped=kill_switch_tripped,
+            master=master,
         )
         orders.extend(_square_off_orders(symbol, bar.timestamp, portfolio, owner_by_symbol))
 
