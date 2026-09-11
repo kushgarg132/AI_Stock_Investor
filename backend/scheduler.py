@@ -12,10 +12,18 @@ at that point.
 
 import asyncio
 import logging
+import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Awaitable, Callable, Optional
 
 from backend.ai.sentiment import refresh_sentiment
+from backend.core.models import Fill, Side
+from backend.engine.execution.options_costs import calculate_options_costs
+from backend.engine.persistence import LedgerStore
+from backend.engine.portfolio import Portfolio
 from backend.engine.session import IST
+from backend.instruments.master import InstrumentMaster
+from backend.options.resolver import parse_underlying
 from backend.prefs import PrefsStore
 from backend.suggestions.scan import scan_universe
 from backend.suggestions.store import SuggestionStore
@@ -46,6 +54,7 @@ async def run_daily_jobs(db, redis=None, now=None) -> dict:
     prefs_store = PrefsStore(db)
 
     expired = await SuggestionStore(db).expire_stale(now=now)
+    options_closed = await close_expired_option_positions(db, redis=redis, now=now)
 
     scanned_users = 0
     created_total = 0
@@ -69,10 +78,88 @@ async def run_daily_jobs(db, redis=None, now=None) -> dict:
             await _refresh_sentiment_for(created, redis)
 
     logger.info(
-        "daily pass: %d expired, %d user(s) scanned, %d suggestion(s) created",
-        expired, scanned_users, created_total,
+        "daily pass: %d expired, %d option position(s) closed, %d user(s) scanned, %d suggestion(s) created",
+        expired, options_closed, scanned_users, created_total,
     )
-    return {"expired": expired, "users": scanned_users, "created": created_total}
+    return {
+        "expired": expired, "options_closed": options_closed,
+        "users": scanned_users, "created": created_total,
+    }
+
+
+async def _default_spot_lookup(symbol: str) -> Optional[float]:
+    # Local imports: keeps a hard `backend.database` dependency out of every
+    # caller that injects its own spot_lookup (e.g. this module's tests).
+    from backend.data.providers.yfinance_provider import YFinanceProvider
+    from backend.database import db as _db
+
+    instrument = await InstrumentMaster(_db.db).get("NSE", symbol)
+    if instrument is None:
+        return None
+    quote = await YFinanceProvider().quote(instrument)
+    price = quote.get("last_price")
+    return float(price) if price else None
+
+
+async def close_expired_option_positions(
+    db,
+    redis=None,
+    now: Optional[datetime] = None,
+    spot_lookup: Callable[[str], Awaitable[Optional[float]]] = _default_spot_lookup,
+) -> int:
+    """Closes every open option position (a Position whose symbol resolves
+    to an NFO Instrument with expiry in the past) with a synthetic closing
+    fill: worthless (premium 0) if the underlying's current mark leaves the
+    put OTM, a simple intrinsic-value approximation if ITM -- not real
+    physical/cash assignment mechanics, which are more involved than is
+    worth modeling for a paper-only strategy. Returns the count closed."""
+    now = now or datetime.now(timezone.utc)
+    # Instrument.expiry round-trips through Mongo as a NAIVE UTC datetime
+    # (see backend/instruments/loader.py's own note: Motor hands back naive
+    # UTC datetimes regardless of what was stored) -- compare against a
+    # naive `now` so this never raises on an aware-vs-naive comparison.
+    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
+    master = InstrumentMaster(db)
+    prefs_store = PrefsStore(db)
+    closed = 0
+
+    for prefs in await prefs_store.scan_enabled_users():
+        user_id = prefs["user_id"]
+        ledger = LedgerStore(db, user_id=user_id)
+        positions = await ledger.get_open_positions()
+
+        for symbol, position in positions.items():
+            contract = await master.get("NFO", symbol)
+            if contract is None or contract.expiry is None:
+                continue
+            contract_expiry = (
+                contract.expiry.replace(tzinfo=None) if contract.expiry.tzinfo is not None else contract.expiry
+            )
+            if contract_expiry >= now_naive:
+                continue
+
+            underlying = parse_underlying(symbol, contract.expiry.date(), contract.strike, contract.instrument_type)
+            spot = await spot_lookup(underlying)
+            if spot is None:
+                continue
+
+            intrinsic = max(contract.strike - spot, 0.0) if contract.instrument_type == "PE" else max(spot - contract.strike, 0.0)
+            closing_side = Side.BUY if position.quantity < 0 else Side.SELL
+
+            fill = Fill(
+                order_id=str(uuid.uuid4()), symbol=symbol, side=closing_side,
+                quantity=abs(position.quantity), price=intrinsic, timestamp=now,
+                costs=calculate_options_costs(intrinsic, abs(position.quantity), closing_side),
+            )
+            portfolio = Portfolio()
+            portfolio.positions = positions
+            quantity_before = position.quantity
+            portfolio.apply(fill)
+            await ledger.on_fill(fill, quantity_before, portfolio.positions[symbol])
+            await ledger.snapshot_positions(portfolio.positions)
+            closed += 1
+
+    return closed
 
 
 async def _refresh_sentiment_for(suggestions: list[dict], redis) -> None:

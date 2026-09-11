@@ -11,7 +11,10 @@ import pytest
 from mongomock_motor import AsyncMongoMockClient
 
 from backend import scheduler
+from backend.engine.persistence import LedgerStore
 from backend.engine.session import IST
+from backend.instruments.master import InstrumentMaster
+from backend.instruments.models import Instrument
 from backend.prefs import PrefsStore
 from backend.suggestions.store import SuggestionStore
 
@@ -153,3 +156,55 @@ async def test_new_suggestions_get_a_thesis(mongo, monkeypatch):
     await scheduler.run_daily_jobs(mongo, now=datetime(2024, 1, 15, tzinfo=timezone.utc))
 
     assert (await SuggestionStore(mongo).get("alice", "s1"))["ai_thesis"] == "RELIANCE is compounding."
+
+
+# ---------------------------------------------------------------------------
+# close_expired_option_positions (Phase 5b)
+# ---------------------------------------------------------------------------
+
+async def _seed_option_position(mongo, tradingsymbol: str, expiry: datetime, strike: float) -> None:
+    await _add_user(mongo, "alice")
+    master = InstrumentMaster(mongo)
+    await master.upsert_many([Instrument(
+        exchange="NFO", tradingsymbol=tradingsymbol, name="RELIANCE",
+        instrument_token=1, exchange_token=1, instrument_type="PE", segment="NFO-OPT",
+        lot_size=250, tick_size=0.05, expiry=expiry, strike=strike,
+    )])
+    ledger = LedgerStore(mongo, user_id="alice")
+    await ledger.positions.insert_one({
+        "user_id": "alice", "run_id": None, "symbol": tradingsymbol,
+        "quantity": -250.0, "avg_price": 45.0, "realized_pnl": 0.0, "unrealized_pnl": 0.0,
+    })
+
+
+@pytest.mark.asyncio
+async def test_closes_an_expired_otm_position_worthless(mongo):
+    # Instrument.expiry is stored/read as a NAIVE UTC datetime -- see
+    # backend/instruments/kite_source.py's mapping and
+    # backend/instruments/loader.py's own documented note that Motor hands
+    # back naive UTC datetimes regardless of what was stored.
+    await _seed_option_position(mongo, "RELIANCE24NOV2800PE", datetime(2024, 11, 28), 2800.0)
+
+    async def fake_spot(symbol: str) -> float:
+        return 3200.0  # far OTM: spot >> strike for a put
+
+    closed = await scheduler.close_expired_option_positions(
+        mongo, now=datetime(2024, 12, 1, tzinfo=timezone.utc), spot_lookup=fake_spot,
+    )
+
+    assert closed == 1
+    positions = await LedgerStore(mongo, user_id="alice").get_open_positions()
+    assert "RELIANCE24NOV2800PE" not in positions
+
+
+@pytest.mark.asyncio
+async def test_leaves_unexpired_positions_untouched(mongo):
+    await _seed_option_position(mongo, "RELIANCE25JAN2800PE", datetime(2025, 1, 30), 2800.0)
+
+    async def fake_spot(symbol: str) -> float:
+        return 3200.0
+
+    closed = await scheduler.close_expired_option_positions(
+        mongo, now=datetime(2024, 12, 1, tzinfo=timezone.utc), spot_lookup=fake_spot,
+    )
+    assert closed == 0
