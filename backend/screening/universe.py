@@ -19,12 +19,12 @@ async def build_quality_universe(
     instruments: list[Instrument],
     provider: FundamentalsProvider,
     min_quality_score: float = 0.5,
-) -> list[str]:
+) -> dict[str, float]:
     """Fetches a snapshot per instrument concurrently (capped by a semaphore
     so this doesn't fire 80+ simultaneous yfinance requests), scores each,
-    and returns the tradingsymbols meeting `min_quality_score`. An instrument
-    whose snapshot fetch fails or returns None is excluded outright -- never
-    defaulted to a passing (or any) score.
+    and returns a symbol -> quality_score mapping for tradingsymbols meeting
+    `min_quality_score`. An instrument whose snapshot fetch fails or returns
+    None is excluded outright -- never defaulted to a passing (or any) score.
     """
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT_FETCHES)
 
@@ -39,7 +39,7 @@ async def build_quality_universe(
         return instrument.tradingsymbol, quality_score(snapshot)
 
     results = await asyncio.gather(*(_fetch(instrument) for instrument in instruments))
-    return [
-        symbol for symbol, score in (r for r in results if r is not None)
+    return {
+        symbol: score for symbol, score in (r for r in results if r is not None)
         if score >= min_quality_score
-    ]
+    }

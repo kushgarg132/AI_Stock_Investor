@@ -65,7 +65,7 @@ async def test_build_quality_universe_excludes_none_and_raising():
 
     result = await build_quality_universe(instruments, provider, min_quality_score=0.0)
 
-    assert result == ["A"]
+    assert result == {"A": quality_score(_HIGH_QUALITY.model_copy(update={"symbol": "A"}))}
 
 
 async def test_build_quality_universe_applies_threshold():
@@ -74,7 +74,7 @@ async def test_build_quality_universe_applies_threshold():
 
     result = await build_quality_universe(instruments, provider, min_quality_score=0.5)
 
-    assert result == ["HIGH"]
+    assert result == {"HIGH": quality_score(_HIGH_QUALITY.model_copy(update={"symbol": "HIGH"}))}
 
 
 async def test_build_quality_universe_caps_concurrency():
