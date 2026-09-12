@@ -6,6 +6,7 @@ on a clock. The scheduling arithmetic is tested separately -- getting "next
 """
 
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
@@ -208,3 +209,66 @@ async def test_leaves_unexpired_positions_untouched(mongo):
         mongo, now=datetime(2024, 12, 1, tzinfo=timezone.utc), spot_lookup=fake_spot,
     )
     assert closed == 0
+
+
+# ---------------------------------------------------------------------------
+# Analyst verdict refresh (Phase 6)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_pass_refreshes_analyst_verdicts_for_curated_symbols(mongo, monkeypatch):
+    async def fake_scan(db, user_id, universe, **kwargs):
+        return []
+    monkeypatch.setattr(scheduler, "scan_universe", fake_scan)
+
+    refreshed = []
+
+    async def fake_refresh(symbol, redis, **kwargs):
+        refreshed.append(symbol)
+        return {}
+    monkeypatch.setattr(scheduler, "refresh_analyst_verdict", fake_refresh)
+
+    redis = AsyncMock()
+    result = await scheduler.run_daily_jobs(mongo, redis=redis, now=datetime(2024, 1, 15, tzinfo=timezone.utc))
+
+    from backend.options.resolver import STRIKE_INTERVALS
+    assert set(refreshed) == set(STRIKE_INTERVALS)
+    assert result["verdicts_refreshed"] == len(STRIKE_INTERVALS)
+
+
+@pytest.mark.asyncio
+async def test_pass_skips_analyst_verdict_refresh_without_redis(mongo, monkeypatch):
+    async def fake_scan(db, user_id, universe, **kwargs):
+        return []
+    monkeypatch.setattr(scheduler, "scan_universe", fake_scan)
+
+    called = []
+
+    async def fake_refresh(symbol, redis, **kwargs):
+        called.append(symbol)
+        return {}
+    monkeypatch.setattr(scheduler, "refresh_analyst_verdict", fake_refresh)
+
+    result = await scheduler.run_daily_jobs(mongo, redis=None, now=datetime(2024, 1, 15, tzinfo=timezone.utc))
+
+    assert called == []
+    assert result["verdicts_refreshed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_one_symbols_verdict_refresh_failure_does_not_stop_the_others(mongo, monkeypatch):
+    async def fake_scan(db, user_id, universe, **kwargs):
+        return []
+    monkeypatch.setattr(scheduler, "scan_universe", fake_scan)
+
+    async def flaky_refresh(symbol, redis, **kwargs):
+        if symbol == "TCS":
+            raise RuntimeError("LLM timeout")
+        return {}
+    monkeypatch.setattr(scheduler, "refresh_analyst_verdict", flaky_refresh)
+
+    from backend.options.resolver import STRIKE_INTERVALS
+    redis = AsyncMock()
+    result = await scheduler.run_daily_jobs(mongo, redis=redis, now=datetime(2024, 1, 15, tzinfo=timezone.utc))
+
+    assert result["verdicts_refreshed"] == len(STRIKE_INTERVALS) - 1

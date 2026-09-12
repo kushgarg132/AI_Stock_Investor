@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Awaitable, Callable, Optional
 
+from backend.ai.analyst_verdict import refresh_analyst_verdict
 from backend.ai.sentiment import refresh_sentiment
 from backend.core.models import Fill, Side
 from backend.engine.execution.options_costs import calculate_options_costs
@@ -23,7 +24,7 @@ from backend.engine.persistence import LedgerStore
 from backend.engine.portfolio import Portfolio
 from backend.engine.session import IST
 from backend.instruments.master import InstrumentMaster
-from backend.options.resolver import parse_underlying
+from backend.options.resolver import STRIKE_INTERVALS, parse_underlying
 from backend.prefs import PrefsStore
 from backend.suggestions.scan import scan_universe
 from backend.suggestions.store import SuggestionStore
@@ -55,6 +56,7 @@ async def run_daily_jobs(db, redis=None, now=None) -> dict:
 
     expired = await SuggestionStore(db).expire_stale(now=now)
     options_closed = await close_expired_option_positions(db, redis=redis, now=now)
+    verdicts_refreshed = await _refresh_analyst_verdicts(redis)
 
     scanned_users = 0
     created_total = 0
@@ -78,11 +80,13 @@ async def run_daily_jobs(db, redis=None, now=None) -> dict:
             await _refresh_sentiment_for(created, redis)
 
     logger.info(
-        "daily pass: %d expired, %d option position(s) closed, %d user(s) scanned, %d suggestion(s) created",
-        expired, options_closed, scanned_users, created_total,
+        "daily pass: %d expired, %d option position(s) closed, %d verdict(s) refreshed, "
+        "%d user(s) scanned, %d suggestion(s) created",
+        expired, options_closed, verdicts_refreshed, scanned_users, created_total,
     )
     return {
         "expired": expired, "options_closed": options_closed,
+        "verdicts_refreshed": verdicts_refreshed,
         "users": scanned_users, "created": created_total,
     }
 
@@ -170,6 +174,22 @@ async def _refresh_sentiment_for(suggestions: list[dict], redis) -> None:
             await refresh_sentiment(symbol, redis)
         except Exception as exc:
             logger.warning("sentiment refresh failed for %s: %s", symbol, exc)
+
+
+async def _refresh_analyst_verdicts(redis) -> int:
+    """Shared across every user's scan -- one refresh per curated symbol per day, not one
+    per user. Same per-symbol failure isolation _refresh_sentiment_for already uses: one bad
+    symbol must not cost every other symbol its refresh."""
+    if redis is None:
+        return 0
+    count = 0
+    for symbol in STRIKE_INTERVALS:
+        try:
+            await refresh_analyst_verdict(symbol, redis)
+            count += 1
+        except Exception as exc:
+            logger.warning("analyst verdict refresh failed for %s: %s", symbol, exc)
+    return count
 
 
 async def scheduler_loop(db, redis=None) -> None:
