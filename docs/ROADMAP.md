@@ -15,7 +15,7 @@ where to start — nothing else in this repo tracks it.
 | 3 | Safety rails + backtest gate | — | **done 2026-09-09** |
 | 4 | Wire the three intraday strategies | 3 | **done 2026-09-10** |
 | 5 | Live execution + F&O | 1, 2, 3 | **5a (equity) done 2026-09-10**, **5b (CSP plumbing) done 2026-09-11** |
-| 6 | Revive the long-term agent engine | — | not started |
+| 6 | Revive the long-term agent engine | — | **done 2026-09-11** |
 | 7 | Multi-worker readiness | — | not started |
 
 Two orderings are not negotiable: **Phase 3 before Phase 5** (no real order may be
@@ -358,7 +358,7 @@ Design: `docs/superpowers/specs/2026-09-11-phase-5b-fno-cash-secured-put-design.
 
 ---
 
-## Phase 6 — Revive the long-term agent engine
+## Phase 6 — Revive the long-term agent engine — **done 2026-09-11**
 
 **Goal.** Give long-term suggestions a genuine reasoning source instead of reusing the
 intraday rule strategies.
@@ -373,6 +373,55 @@ back — that duplicate conviction formula is what the 30% cap exists to prevent
 **Done when:** long-term suggestions carry agent-derived reasoning in `reason_codes`, the
 AI contribution is still capped at 30%, and exactly one conviction formula exists in the
 codebase.
+
+### What landed
+
+- **Dead MasterAgent-era code deleted** — the old Analyst/Quant/Risk chain
+  (`backend/components/quant/agent.py`, `backend/components/risk/agent.py`) and its
+  duplicate `confidence*0.6 + alignment*0.4` conviction blend are gone rather than revived;
+  `backend/scoring/composite.py` remains the one conviction formula in the codebase.
+- **Analyst-verdict Redis cache** (`backend/ai/analyst_verdict.py`) — `refresh_analyst_verdict`
+  runs `AnalystAgent` out-of-band on a new daily scheduler job and caches the result
+  (25h TTL); `get_cached_verdict` is the only thing a strategy or scan ever reads, never
+  blocking on the LLM call itself.
+- **`AnalystVerdictStrategy`** (`backend/strategies/longterm/analyst_verdict.py`) — new
+  LONGTERM strategy, BUY when the cached verdict is bullish and clears a materiality
+  threshold. Its curated symbol list reuses Phase 5b's F&O `STRIKE_INTERVALS` table
+  (`backend/options/resolver.py`) rather than inventing a third curated list — not a
+  coincidence.
+- **`QualityMomentumStrategy` finally wired into the real `scan_universe` production path**
+  — it was registry-ready but dead since it was written; `backend/suggestions/scan.py` now
+  actually builds and passes its universe/scores.
+- **This fix wave's AI_CAP correction** — `AnalystVerdictStrategy`'s strength formula
+  originally let the same LLM sentiment number that feeds `score_intent`'s `ai_score`
+  channel also flow into the rule channel unbounded, making `AI_CAP`/`RULE_FLOOR` do
+  nothing for this strategy's intents. Fixed to `RULE_FLOOR + AI_CAP * fraction`
+  (`backend/strategies/longterm/analyst_verdict.py`) — bounds the rule-channel contribution
+  to `AI_CAP`s worth of influence while keeping the "clears the floor by construction"
+  property. Also hardened `get_cached_verdict` against a malformed (non-dict) cache
+  payload, which previously reached `on_bar`'s hard subscripts and could crash a user's
+  entire daily scan for the 25h cache TTL; and bounded/filtered `reason_codes`/`top_reason`
+  so an empty or unbounded string can never land in a stored `Intent`.
+
+### Explicitly not done here (deferred, not silently dropped)
+
+- **ATR-based stop widening** — the one piece of the old `RiskAgent` with no current
+  equivalent — remains a documented non-goal, not something silently dropped in the
+  rebuild.
+- **Full daily-cached quality-universe fetch.** `scan_universe` calls
+  `build_quality_universe` fresh on every scan (per-user, per-scan yfinance calls) rather
+  than caching it once a day the way the analyst-verdict cache does. Out of scope for this
+  fix wave; a real follow-up.
+- **`owner_by_symbol`'s last-writer-wins in `backend/engine/runner.py`.** When more than
+  one strategy is constructed for the same symbol, whichever strategy is built last "owns"
+  that symbol for attribution purposes, which can mislabel a non-AI intent with the wrong
+  strategy name. Pre-existing bug, predates Phase 6, made more visible by adding a second
+  LONGTERM strategy (`analyst_verdict`) that can now collide with `quality_momentum` on the
+  same symbol.
+- **Orphaned `TradeSignal`/`SignalType` models** in `backend/components/shared/models.py`
+  are dead-code cleanup candidates for a future pass — the code that produced them
+  (`backend/components/quant/strategies.py`) is already deleted, but the models themselves
+  weren't removed in this phase.
 
 ---
 
