@@ -32,7 +32,7 @@ from backend.instruments.loader import (
 # Setup Logging
 logger = setup_logging()
 from backend.components.analyst import news, sentiment, events
-from backend.components.quant import price, trend, support, volume, strategies
+from backend.components.quant import price, trend, support, volume
 from backend.components.risk import risk
 from backend.components.master import stock_info
 from backend.mcp_tools import stock_scanner
