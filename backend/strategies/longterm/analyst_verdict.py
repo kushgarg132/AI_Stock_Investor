@@ -9,6 +9,7 @@ of its own, per the project's no-I/O-in-strategies rule
 
 from backend.core.models import Intent, Side
 from backend.engine.protocols import StrategySpec
+from backend.scoring.composite import AI_CAP, RULE_FLOOR
 from backend.strategies.base import TokenResolvingStrategy
 
 # 1-10 scale (backend.components.shared.models.NewsArticle.impact_score's own range) -- below
@@ -40,7 +41,7 @@ class AnalystVerdictStrategy(TokenResolvingStrategy):
             return
 
         verdict = self.verdicts[symbol]
-        if verdict["label"] != "bullish" or verdict["impact_score"] < MATERIALITY_THRESHOLD:
+        if verdict.get("label") != "bullish" or verdict.get("impact_score", 0) < MATERIALITY_THRESHOLD:
             return
 
         history = ctx.history(symbol, 1)
@@ -48,14 +49,22 @@ class AnalystVerdictStrategy(TokenResolvingStrategy):
             return
         current_price = history[-1].close
 
+        # This same LLM sentiment number also flows into the ai_score channel later
+        # (backend.scoring.composite.score_intent, via get_cached_sentiment's shared cache)
+        # -- so the rule channel must not carry it unbounded, or AI_CAP/RULE_FLOOR do
+        # nothing for this strategy's intents. Bounding to RULE_FLOOR + AI_CAP * fraction
+        # keeps "clears the floor by construction" (min value is exactly RULE_FLOOR) while
+        # capping how far a single verdict can push the rule-channel number.
         # The cached sentiment_score comes from an LLM call with no upstream range
         # validation -- clamp defensively so a hallucinated value can never raise out of
         # Intent's own [0, 1] strength check and take down the whole scan.
-        strength = max(0.0, min(1.0, (verdict["sentiment_score"] + 1) / 2))
+        fraction = max(0.0, min(1.0, (float(verdict.get("sentiment_score", 0.0) or 0.0) + 1) / 2))
+        strength = RULE_FLOOR + AI_CAP * fraction
 
+        reason_codes = [c for c in ("analyst_bullish_verdict", verdict.get("top_reason", "")) if c]
         ctx.submit(Intent(
             symbol=symbol, side=Side.BUY, strength=strength,
-            reason_codes=["analyst_bullish_verdict", verdict["top_reason"]],
+            reason_codes=reason_codes,
             stop_hint=current_price * 0.90,
             target_hint=current_price * 1.15,
         ))

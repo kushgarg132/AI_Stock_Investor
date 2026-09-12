@@ -25,10 +25,14 @@ async def get_cached_verdict(symbol: str, redis) -> Optional[dict]:
     if val is None:
         return None
     try:
-        return json.loads(val)
+        parsed = json.loads(val)
     except (TypeError, ValueError):
         logger.warning("analyst verdict cache for %s held a malformed value", symbol)
         return None
+    if not isinstance(parsed, dict):
+        logger.warning("analyst verdict cache for %s held a non-dict value", symbol)
+        return None
+    return parsed
 
 
 async def refresh_analyst_verdict(symbol: str, redis, ttl_seconds: int = 90000) -> dict:
@@ -48,7 +52,7 @@ async def refresh_analyst_verdict(symbol: str, redis, ttl_seconds: int = 90000) 
     events = output.get("events") or []
     if events:
         top_event = max(events, key=lambda e: e.get("impact_rating", 0))
-        top_reason = top_event.get("description", "")
+        top_reason = top_event.get("description", "")[:200]
     else:
         summary = output.get("summary") or ""
         top_reason = next((line.strip() for line in summary.splitlines() if line.strip()), "")[:200]

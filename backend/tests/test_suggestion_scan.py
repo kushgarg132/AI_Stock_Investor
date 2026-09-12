@@ -295,7 +295,10 @@ async def test_scan_omits_symbols_with_no_cached_verdict(mongo, monkeypatch):
 
     await scan_universe(mongo, user_id="alice", universe=["RELIANCE"], redis=redis)
 
-    assert captured["analyst_verdicts"] == {}
+    # build_default_strategies documents None (not {}) as "don't include this
+    # strategy" -- scan_universe now honors that contract when the cache came
+    # back empty rather than passing a dead-but-truthy {} through.
+    assert captured["analyst_verdicts"] is None
 
 
 @pytest.mark.asyncio
@@ -315,7 +318,7 @@ async def test_scan_skips_analyst_verdict_fetch_without_redis(mongo, monkeypatch
 
     await scan_universe(mongo, user_id="alice", universe=["RELIANCE"], redis=None)
 
-    assert captured["analyst_verdicts"] == {}
+    assert captured["analyst_verdicts"] is None
 
 
 @pytest.mark.asyncio

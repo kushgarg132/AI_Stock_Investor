@@ -110,11 +110,23 @@ async def scan_universe(
 
     quality_scores = await build_quality_universe(instruments, YFinanceFundamentalsProvider())
 
+    if instruments and not quality_scores:
+        logger.debug(
+            "build_quality_universe returned no scores for %d instrument(s) -- "
+            "quality_momentum strategy will be a no-op this scan", len(instruments),
+        )
+    if not analyst_verdicts:
+        logger.debug(
+            "no cached analyst verdicts available -- analyst_verdict strategy will be a "
+            "no-op this scan"
+        )
+
     strategies = [
         s for s in build_default_strategies(
             universe=[i.tradingsymbol for i in instruments], symbol_for_token=symbol_for_token,
-            quality_universe=list(quality_scores), quality_scores=quality_scores,
-            analyst_verdicts=analyst_verdicts,
+            quality_universe=list(quality_scores) if quality_scores else None,
+            quality_scores=quality_scores or None,
+            analyst_verdicts=analyst_verdicts or None,
         )
         if s.spec.mode == "LONGTERM"
     ]

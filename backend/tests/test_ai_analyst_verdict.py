@@ -34,6 +34,14 @@ async def test_get_cached_verdict_redis_failure_returns_none():
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_get_cached_verdict_rejects_non_dict_value():
+    redis = AsyncMock()
+    redis.get.return_value = json.dumps([1, 2, 3])  # valid JSON, wrong shape
+    result = await get_cached_verdict("RELIANCE", redis)
+    assert result is None
+
+
 class _FakeAnalystAgent:
     async def analyze(self, state):
         return {

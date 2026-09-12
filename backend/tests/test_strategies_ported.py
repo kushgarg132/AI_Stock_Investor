@@ -447,7 +447,8 @@ def test_analyst_verdict_strategy_fires_on_bullish_high_impact_verdict():
     intent = intents[0]
     assert intent.side == Side.BUY
     assert intent.reason_codes == ["analyst_bullish_verdict", "Beat estimates by 12%"]
-    assert intent.strength == pytest.approx(0.8)  # (0.6 + 1) / 2
+    # RULE_FLOOR + AI_CAP * fraction = 0.45 + 0.30 * ((0.6 + 1) / 2) = 0.45 + 0.30 * 0.8 = 0.69
+    assert intent.strength == pytest.approx(0.69)
 
 
 def test_analyst_verdict_strategy_silent_below_impact_threshold():
@@ -473,7 +474,8 @@ def test_analyst_verdict_strategy_clamps_out_of_range_sentiment_score():
     strategy = AnalystVerdictStrategy([SYMBOL], {TOKEN: SYMBOL}, {SYMBOL: _bullish_verdict(sentiment_score=1.4)})
     intents = _run(strategy, _flat_bars(1))
     assert len(intents) == 1
-    assert intents[0].strength == 1.0
+    # clamped fraction = 1.0 -> RULE_FLOOR + AI_CAP * 1.0 = 0.45 + 0.30 = 0.75
+    assert intents[0].strength == pytest.approx(0.75)
 
 
 def test_build_default_strategies_includes_analyst_verdict_when_provided():
