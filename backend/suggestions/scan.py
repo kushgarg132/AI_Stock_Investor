@@ -11,6 +11,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from backend.ai.analyst_verdict import get_cached_verdict
 from backend.core.clock import SimClock
 from backend.core.models import Bar
 from backend.data.feeds.historical import HistoricalFeed
@@ -19,6 +20,9 @@ from backend.engine.execution.simulated import SimulatedExecutionClient
 from backend.engine.portfolio import Portfolio
 from backend.engine.runner import run
 from backend.instruments.master import InstrumentMaster
+from backend.options.resolver import STRIKE_INTERVALS
+from backend.screening.providers.yfinance_fundamentals import YFinanceFundamentalsProvider
+from backend.screening.universe import build_quality_universe
 from backend.strategies.registry import build_default_strategies
 from backend.suggestions.sink import SuggestionSink
 from backend.suggestions.store import SuggestionStore
@@ -96,9 +100,21 @@ async def scan_universe(
         return []
 
     symbol_for_token = {i.instrument_token: i.tradingsymbol for i in instruments}
+
+    analyst_verdicts = {}
+    if redis is not None:
+        for symbol in STRIKE_INTERVALS:
+            verdict = await get_cached_verdict(symbol, redis)
+            if verdict is not None:
+                analyst_verdicts[symbol] = verdict
+
+    quality_scores = await build_quality_universe(instruments, YFinanceFundamentalsProvider())
+
     strategies = [
         s for s in build_default_strategies(
             universe=[i.tradingsymbol for i in instruments], symbol_for_token=symbol_for_token,
+            quality_universe=list(quality_scores), quality_scores=quality_scores,
+            analyst_verdicts=analyst_verdicts,
         )
         if s.spec.mode == "LONGTERM"
     ]

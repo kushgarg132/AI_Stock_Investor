@@ -6,7 +6,9 @@ not a trade you can still take. The scan therefore replays history to warm
 the strategies up and only records suggestions from the final session.
 """
 
+import json
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 
 import pytest
 from mongomock_motor import AsyncMongoMockClient
@@ -173,6 +175,7 @@ async def test_scan_records_one_suggestion_per_symbol_from_the_final_session(mon
     monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
     monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
     monkeypatch.setattr(scan_module, "build_default_strategies", _only_always_buy)
+    monkeypatch.setattr(scan_module, "build_quality_universe", AsyncMock(return_value={}))
 
     created = await scan_universe(mongo, user_id="alice", universe=["RELIANCE", "TCS"])
 
@@ -194,22 +197,31 @@ async def test_scan_does_not_query_sentiment_for_warmup_bars(mongo, monkeypatch)
     today's mood to a stale day, and -- since `_AlwaysBuyStrategy` fires on
     every one of its 60 bars -- doing this for real would mean 60 Redis
     round trips for one symbol instead of the single one that's actually
-    meaningful (the final, armed session)."""
+    meaningful (the final, armed session).
+
+    `scan_universe` also does one upfront, non-per-bar analyst-verdict cache
+    read per `STRIKE_INTERVALS` symbol (Phase 6) before the bar replay even
+    starts -- that's a fixed baseline unrelated to warmup, not a leak this
+    test is about, so it's allowed for on top of the single per-bar read."""
     from unittest.mock import AsyncMock
 
+    from backend.options.resolver import STRIKE_INTERVALS
     from backend.suggestions import scan as scan_module
 
     monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
     monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
     monkeypatch.setattr(scan_module, "build_default_strategies", _only_always_buy)
+    monkeypatch.setattr(scan_module, "build_quality_universe", AsyncMock(return_value={}))
 
     redis = AsyncMock()
     redis.get.return_value = "0.5"
 
     await scan_universe(mongo, user_id="alice", universe=["RELIANCE"], redis=redis)
 
-    assert redis.get.await_count <= 1, (
-        f"expected at most one sentiment lookup (the final session's), got {redis.get.await_count}"
+    baseline = len(STRIKE_INTERVALS)  # one upfront analyst-verdict read per curated symbol
+    assert redis.get.await_count <= baseline + 1, (
+        "expected only the fixed analyst-verdict baseline plus at most one "
+        f"sentiment lookup (the final session's), got {redis.get.await_count}"
     )
 
 
@@ -225,3 +237,103 @@ async def test_scan_with_no_resolvable_symbols_returns_nothing(mongo, monkeypatc
     monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
 
     assert await scan_universe(mongo, user_id="alice", universe=["NOSUCH"]) == []
+
+
+# ---------------------------------------------------------------------------
+# Wiring the Task-2 analyst-verdict cache and Task-4 quality universe into
+# the strategy-building call.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_scan_wires_analyst_verdicts_into_strategy_build(mongo, monkeypatch):
+    from backend.suggestions import scan as scan_module
+
+    captured = {}
+
+    def _spy_build(universe, symbol_for_token, **kwargs):
+        captured.update(kwargs)
+        return [_AlwaysBuyStrategy(universe, symbol_for_token)]
+
+    monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
+    monkeypatch.setattr(scan_module, "build_default_strategies", _spy_build)
+    monkeypatch.setattr(scan_module, "build_quality_universe", AsyncMock(return_value={}))
+
+    async def fake_get(key):
+        if key == "analyst_verdict:RELIANCE":
+            return json.dumps({
+                "sentiment_score": 0.5, "impact_score": 7,
+                "label": "bullish", "top_reason": "strong earnings",
+            })
+        return None  # every other key (e.g. sentiment:RELIANCE) -- no cached value
+
+    redis = AsyncMock()
+    redis.get.side_effect = fake_get
+
+    await scan_universe(mongo, user_id="alice", universe=["RELIANCE"], redis=redis)
+
+    assert captured["analyst_verdicts"]["RELIANCE"]["label"] == "bullish"
+
+
+@pytest.mark.asyncio
+async def test_scan_omits_symbols_with_no_cached_verdict(mongo, monkeypatch):
+    from backend.suggestions import scan as scan_module
+
+    captured = {}
+
+    def _spy_build(universe, symbol_for_token, **kwargs):
+        captured.update(kwargs)
+        return [_AlwaysBuyStrategy(universe, symbol_for_token)]
+
+    monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
+    monkeypatch.setattr(scan_module, "build_default_strategies", _spy_build)
+    monkeypatch.setattr(scan_module, "build_quality_universe", AsyncMock(return_value={}))
+
+    redis = AsyncMock()
+    redis.get.return_value = None  # nothing cached for any symbol
+
+    await scan_universe(mongo, user_id="alice", universe=["RELIANCE"], redis=redis)
+
+    assert captured["analyst_verdicts"] == {}
+
+
+@pytest.mark.asyncio
+async def test_scan_skips_analyst_verdict_fetch_without_redis(mongo, monkeypatch):
+    from backend.suggestions import scan as scan_module
+
+    captured = {}
+
+    def _spy_build(universe, symbol_for_token, **kwargs):
+        captured.update(kwargs)
+        return [_AlwaysBuyStrategy(universe, symbol_for_token)]
+
+    monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
+    monkeypatch.setattr(scan_module, "build_default_strategies", _spy_build)
+    monkeypatch.setattr(scan_module, "build_quality_universe", AsyncMock(return_value={}))
+
+    await scan_universe(mongo, user_id="alice", universe=["RELIANCE"], redis=None)
+
+    assert captured["analyst_verdicts"] == {}
+
+
+@pytest.mark.asyncio
+async def test_scan_wires_quality_universe_into_strategy_build(mongo, monkeypatch):
+    from backend.suggestions import scan as scan_module
+
+    captured = {}
+
+    def _spy_build(universe, symbol_for_token, **kwargs):
+        captured.update(kwargs)
+        return [_AlwaysBuyStrategy(universe, symbol_for_token)]
+
+    monkeypatch.setattr(scan_module, "InstrumentMaster", _FakeMaster)
+    monkeypatch.setattr(scan_module, "YFinanceProvider", _RisingHistoryProvider)
+    monkeypatch.setattr(scan_module, "build_default_strategies", _spy_build)
+    monkeypatch.setattr(scan_module, "build_quality_universe", AsyncMock(return_value={"RELIANCE": 0.8}))
+
+    await scan_universe(mongo, user_id="alice", universe=["RELIANCE"])
+
+    assert captured["quality_scores"] == {"RELIANCE": 0.8}
+    assert captured["quality_universe"] == ["RELIANCE"]
