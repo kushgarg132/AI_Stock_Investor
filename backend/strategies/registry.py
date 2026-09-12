@@ -10,6 +10,7 @@ from backend.strategies.intraday.orb_breakout import ORBStrategy
 from backend.strategies.intraday.rsi_momentum_scalp import RSIMomentumScalpStrategy
 from backend.strategies.intraday.volume_surge import VolumeSurgeStrategy
 from backend.strategies.intraday.vwap_reversion import VWAPReversionStrategy
+from backend.strategies.longterm.analyst_verdict import AnalystVerdictStrategy
 from backend.strategies.longterm.breakout import TechnicalBreakoutStrategy
 from backend.strategies.longterm.cash_secured_put import CashSecuredPutStrategy
 from backend.strategies.longterm.macd_crossover import MACDCrossoverStrategy
@@ -22,6 +23,7 @@ def build_default_strategies(
     symbol_for_token: Optional[dict[int, str]] = None,
     quality_universe: Optional[list[str]] = None,
     quality_scores: Optional[dict[str, float]] = None,
+    analyst_verdicts: Optional[dict[str, dict]] = None,
 ) -> list[Strategy]:
     """`universe` defaults to `indian_stocks.ALL_SCAN_STOCKS` (the existing
     NSE mid/small-cap symbol list already used elsewhere in this codebase),
@@ -46,6 +48,13 @@ def build_default_strategies(
     QualityMomentumStrategy"; pass both (the caller, e.g. Task 6's
     /trading/start route, is expected to have already awaited
     build_quality_universe) to add it as a 5th strategy.
+
+    `analyst_verdicts` (Phase 6) is the pre-built output of
+    `backend.ai.analyst_verdict.get_cached_verdict` per symbol -- a Redis read, so this
+    factory can't do it itself either. Default `None` means "don't include
+    AnalystVerdictStrategy"; the caller (backend.suggestions.scan.scan_universe) is expected
+    to have already fetched it for the curated symbol list in
+    `backend.options.resolver.STRIKE_INTERVALS`.
     """
     universe = list(universe) if universe is not None else list(ALL_SCAN_STOCKS)
     symbol_for_token = symbol_for_token or {}
@@ -63,5 +72,9 @@ def build_default_strategies(
     if quality_universe is not None and quality_scores is not None:
         strategies.append(
             QualityMomentumStrategy(quality_universe, symbol_for_token, quality_scores)
+        )
+    if analyst_verdicts is not None:
+        strategies.append(
+            AnalystVerdictStrategy(list(analyst_verdicts.keys()), symbol_for_token, analyst_verdicts)
         )
     return strategies

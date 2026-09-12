@@ -7,6 +7,8 @@ approach, adapted to Bars instead of a DataFrame.
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from backend.core.clock import SimClock
 from backend.core.models import Bar, Side
 from backend.engine.context import SimpleStrategyContext
@@ -15,6 +17,7 @@ from backend.strategies.intraday.orb_breakout import ORBStrategy
 from backend.strategies.intraday.rsi_momentum_scalp import RSIMomentumScalpStrategy
 from backend.strategies.intraday.volume_surge import VolumeSurgeStrategy
 from backend.strategies.intraday.vwap_reversion import VWAPReversionStrategy
+from backend.strategies.longterm.analyst_verdict import AnalystVerdictStrategy
 from backend.strategies.longterm.breakout import TechnicalBreakoutStrategy
 from backend.strategies.longterm.cash_secured_put import CashSecuredPutStrategy
 from backend.strategies.longterm.macd_crossover import MACDCrossoverStrategy
@@ -424,3 +427,63 @@ def test_build_default_strategies_includes_quality_momentum_when_provided():
     assert quality_strategy.spec.mode == "LONGTERM"
     assert quality_strategy.spec.timeframe == "1d"
     assert quality_strategy.spec.universe == [SYMBOL]
+
+
+# ---------------------------------------------------------------------------
+# AnalystVerdictStrategy
+# ---------------------------------------------------------------------------
+
+def _bullish_verdict(**overrides) -> dict:
+    verdict = {"sentiment_score": 0.6, "impact_score": 8, "label": "bullish", "top_reason": "Beat estimates by 12%"}
+    verdict.update(overrides)
+    return verdict
+
+
+def test_analyst_verdict_strategy_fires_on_bullish_high_impact_verdict():
+    strategy = AnalystVerdictStrategy([SYMBOL], {TOKEN: SYMBOL}, {SYMBOL: _bullish_verdict()})
+    intents = _run(strategy, _flat_bars(1))
+
+    assert len(intents) == 1
+    intent = intents[0]
+    assert intent.side == Side.BUY
+    assert intent.reason_codes == ["analyst_bullish_verdict", "Beat estimates by 12%"]
+    assert intent.strength == pytest.approx(0.8)  # (0.6 + 1) / 2
+
+
+def test_analyst_verdict_strategy_silent_below_impact_threshold():
+    strategy = AnalystVerdictStrategy([SYMBOL], {TOKEN: SYMBOL}, {SYMBOL: _bullish_verdict(impact_score=3)})
+    intents = _run(strategy, _flat_bars(1))
+    assert intents == []
+
+
+def test_analyst_verdict_strategy_silent_when_not_bullish():
+    strategy = AnalystVerdictStrategy([SYMBOL], {TOKEN: SYMBOL}, {SYMBOL: _bullish_verdict(label="neutral")})
+    intents = _run(strategy, _flat_bars(1))
+    assert intents == []
+
+
+def test_analyst_verdict_strategy_silent_for_symbol_with_no_verdict():
+    strategy = AnalystVerdictStrategy([SYMBOL], {TOKEN: SYMBOL}, {})
+    intents = _run(strategy, _flat_bars(1))
+    assert intents == []
+
+
+def test_analyst_verdict_strategy_clamps_out_of_range_sentiment_score():
+    # A hallucinated LLM score outside [-1, 1] must not crash Intent construction.
+    strategy = AnalystVerdictStrategy([SYMBOL], {TOKEN: SYMBOL}, {SYMBOL: _bullish_verdict(sentiment_score=1.4)})
+    intents = _run(strategy, _flat_bars(1))
+    assert len(intents) == 1
+    assert intents[0].strength == 1.0
+
+
+def test_build_default_strategies_includes_analyst_verdict_when_provided():
+    strategies = build_default_strategies(
+        universe=[SYMBOL],
+        analyst_verdicts={SYMBOL: _bullish_verdict()},
+    )
+    assert len(strategies) == 9
+
+    verdict_strategy = next(s for s in strategies if s.spec.name == "analyst_verdict")
+    assert verdict_strategy.spec.mode == "LONGTERM"
+    assert verdict_strategy.spec.timeframe == "1d"
+    assert verdict_strategy.spec.universe == [SYMBOL]
